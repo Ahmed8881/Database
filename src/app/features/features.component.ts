@@ -1,4 +1,4 @@
-import { AfterViewInit, Component } from '@angular/core';
+import { AfterViewInit, Component,ChangeDetectorRef } from '@angular/core';
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -12,6 +12,7 @@ import { CommonModule } from '@angular/common';
   styleUrl: './features.component.scss'
 })
 export class FeaturesComponent implements AfterViewInit {
+  constructor(private cdr: ChangeDetectorRef) { }
 
   features = [
     {
@@ -33,6 +34,7 @@ export class FeaturesComponent implements AfterViewInit {
     
   ];
   ngAfterViewInit() {
+
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -46,5 +48,7 @@ export class FeaturesComponent implements AfterViewInit {
     document.querySelectorAll('.animate-on-scroll').forEach((element) => {
       observer.observe(element);
     });
+    this.cdr.detectChanges();
+    
   }
 }
