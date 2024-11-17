@@ -3,7 +3,8 @@ import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 
-
+import {  Inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 @Component({
   selector: 'app-features',
   standalone: true,
@@ -12,7 +13,7 @@ import { CommonModule } from '@angular/common';
   styleUrl: './features.component.scss'
 })
 export class FeaturesComponent implements AfterViewInit {
-
+  constructor(@Inject(PLATFORM_ID) private platformId: Object) {}
   features = [
     {
       icon: '/images/feature-icon-01.svg',
@@ -47,18 +48,20 @@ export class FeaturesComponent implements AfterViewInit {
     
   ];
   ngAfterViewInit() {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('in-view');
-        } else {
-          entry.target.classList.remove('in-view');
-        }
+    if (isPlatformBrowser(this.platformId)) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in-view');
+          } else {
+            entry.target.classList.remove('in-view');
+          }
+        });
       });
-    });
 
-    document.querySelectorAll('.animate-on-scroll').forEach((element) => {
-      observer.observe(element);
-    });
+      document.querySelectorAll('.animate-on-scroll').forEach((element) => {
+        observer.observe(element);
+      });
+    }
   }
 }
