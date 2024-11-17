@@ -1,0 +1,16 @@
+.hero {
+    text-align: center;
+    padding-top: 48px;
+    padding-bottom: 88px;
+  }
+  .hero-copy {
+    position: relative;
+    z-index: 1;
+  }
+  .hero-cta {
+    margin-bottom: 40px;
+  }
+  .hero-figure {
+    position: relative;
+  }
+  /* Add more styles from the _hero.scss file */
