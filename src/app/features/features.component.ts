@@ -14,22 +14,32 @@ import { CommonModule } from '@angular/common';
 export class FeaturesComponent {
   features = [
     {
-      icon: 'images/feature-icon-01.svg',
+      icon: '/images/feature-icon-01.svg',
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
       {
-      icon: 'images/feature-icon-02.svg',
+      icon: '/images/feature-icon-01.svg',
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
     {
-      icon: 'images/feature-icon-03.svg',
+      icon: '/images/feature-icon-01.svg',
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
     {
-      icon: 'images/feature-icon-04.svg',
+      icon: '/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
+    {
+      icon: '/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
+    {
+      icon: '/images/feature-icon-01.svg',
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
