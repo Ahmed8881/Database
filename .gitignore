@@ -36,10 +36,3 @@ e2e/*.map
 # End of https://www.toptal.com/developers/gitignore/api/angular
 
 node_modules
-.angular/cache/18.2.12/TaskTree/.tsbuildinfo
-.angular/cache/18.2.12/TaskTree/.tsbuildinfo
-.angular/cache/18.2.12/TaskTree/.tsbuildinfo
-.angular/cache/18.2.12/TaskTree/vite/deps/_metadata.json
-.angular/cache/18.2.12/TaskTree/vite/deps_ssr/_metadata.json
-.angular/cache/18.2.12/TaskTree/vite/deps/_metadata.json
-.angular/cache/18.2.12/TaskTree/.tsbuildinfo
