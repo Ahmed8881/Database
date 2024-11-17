@@ -15,33 +15,33 @@ export class FeaturesComponent {
   features = [
     {
       icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      title: 'Effortless Task Organization',
+      description: 'Easily manage your workload with intuitive task creation, assignment, and prioritization tools. Our system ensures your team stays focused on what matters most.'
     },
       {
-      icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      icon: '/images/feature-icon-02.svg',
+      title: 'Real-Time Collaboration',
+      description: 'Keep your team on the same page with seamless communication and updates in real time, ensuring everyone works in sync.'
     },
     {
-      icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      icon: '/images/feature-icon-03.svg',
+      title: 'Customizable Workflows',
+      description: 'Tailor your workflow to match your business processes. Whether you are agile or traditional, our flexible system adapts to your needs.'
     },
     {
-      icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      icon: '/images/feature-icon-04.svg',
+      title: 'Deadline Tracking',
+      description: 'Stay ahead with automated deadline reminders. Ensure every project is delivered on time without unnecessary stress.'
     },
     {
-      icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      icon: '/images/feature-icon-05.svg',
+      title: 'Insights and Analytics',
+      description: 'Make informed decisions with detailed analytics. Measure productivity, track progress, and gain insights to optimize team performance.'
     },
     {
-      icon: '/images/feature-icon-01.svg',
-      title: 'Be Productive',
-      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+      icon: '/images/feature-icon-06.svg',
+      title: 'Cross-Platform Access',
+      description: 'Access your tasks and projects seamlessly across devices. From desktop to mobile, stay productive wherever you go.'
     },
     
   ];

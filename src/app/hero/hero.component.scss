@@ -6,6 +6,24 @@
   .hero-copy {
     position: relative;
     z-index: 1;
+    width: 100%;
+    .hero-title{
+      font-size: 3rem;
+
+      margin-bottom: 16px;
+      width: fit-content;
+
+    }
+    .hero-title1{
+      font-size: 4rem;
+
+      margin-bottom: 16px;
+      width: fit-content;
+
+    }
+    .hero-paragraph {
+      margin-bottom: 24px;
+    }
   }
   .hero-cta {
     margin-bottom: 40px;
