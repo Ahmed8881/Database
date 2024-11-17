@@ -23,6 +23,31 @@ export class FeaturesComponent {
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
+    {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },  {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },  {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },  {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },  {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },  {
+      icon: 'assets/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
     
   ];
 }
