@@ -8,5 +8,13 @@ import { Component } from '@angular/core';
   styleUrl: './header.component.scss'
 })
 export class HeaderComponent {
+isSideNavOpen = false;
 
+  openSideNav() {
+    this.isSideNavOpen = true;
+  }
+
+  closeSideNav() {
+    this.isSideNavOpen = false;
+  }
 }
