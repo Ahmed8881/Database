@@ -2,20 +2,37 @@ import { Component } from '@angular/core';
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
+
+
 @Component({
   selector: 'app-features',
   standalone: true,
-  imports: [],
+  imports: [CommonModule],
   templateUrl: './features.component.html',
   styleUrl: './features.component.scss'
 })
 export class FeaturesComponent {
   features = [
     {
-      icon: 'assets/images/feature-icon-01.svg',
+      icon: '../../../public/images/feature-icon-01.svg',
       title: 'Be Productive',
       description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
     },
-    // Add more feature objects here
+      {
+      icon: '../../../public/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
+    {
+      icon: '../../../public/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
+    {
+      icon: '../../../public/images/feature-icon-01.svg',
+      title: 'Be Productive',
+      description: 'Fermentum posuere urna nec tincidunt praesent semper feugiat nibh. A arcu cursus vitae congue mauris. Nam at lectus urna duis convallis. Mauris rhoncus aenean vel elit scelerisque mauris.'
+    },
+    
   ];
 }
