@@ -1,16 +1,84 @@
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes moveUpDown {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+#typing-text::after {
+  content: '|';
+  animation: blink 0.7s infinite;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 .hero {
-    text-align: center;
-    padding-top: 48px;
-    padding-bottom: 88px;
+  text-align: center;
+  padding-top: 185px;
+  padding-bottom: 88px;
+  position: relative;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+
+  .hero-title {
+    font-size: 3rem;
+    margin-bottom: 32px;
+    width: fit-content;
   }
-  .hero-copy {
-    position: relative;
-    z-index: 1;
+
+  .hero-title1 {
+    font-size: 4rem;
+    margin-bottom: 32px;
+    width: fit-content;
   }
-  .hero-cta {
-    margin-bottom: 40px;
+
+  .hero-paragraph {
+    margin-bottom: 24px;
   }
-  .hero-figure {
-    position: relative;
+}
+
+.hero-cta {
+  margin-bottom: 40px;
+}
+
+@keyframes rotate {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
   }
-  /* Add more styles from the _hero.scss file */
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.hero-figure {
+  position: relative;
+  opacity: 0; /* Initially hidden */
+
+  &.animate {
+    animation: fadeIn 2s ease-in-out, moveUpDown 3s infinite;
+    opacity: 1; /* Make visible when animation starts */
+  }
+
+ 
+}
