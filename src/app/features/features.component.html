@@ -1,23 +1,23 @@
- <section class="features section overflow-hidden" id="features">
-      <div class="container">
-        <div class="features-inner section-inner has-bottom-divider">
-          <div class="features-wrap">
-            <div class="feature text-center is-revealing" *ngFor="let feature of features">
-              <div class="feature-inner">
-                <div class="feature-icon">
-                  <img [src]="feature.icon" [alt]="feature.title">
-                </div>
-                <h4 class="feature-title mt-10">{{ feature.title }}</h4>
-                <p class="text-sm mb-0">{{ feature.description }}</p>
-              </div>
+<section class="features section overflow-hidden" id="features">
+  <div class="container">
+    <div class="features-inner section-inner has-bottom-divider">
+      <div class="features-wrap">
+        <div class="feature text-center is-revealing" *ngFor="let feature of features">
+          <div class="feature-inner">
+            <div class="feature-icon">
+              <img [src]="feature.icon" [alt]="feature.title">
             </div>
+            <h4 class="feature-title mt-10">{{ feature.title }}</h4>
+            <p class="text-sm mb-0">{{ feature.description }}</p>
           </div>
         </div>
       </div>
-    </section>
+    </div>
+  </div>
+</section> -->
 
-       <!-- Hero Section -->
-  <!-- Hero Section -->
+<!-- Hero Section -->
+<!-- Hero Section -->
 <div class="hero-container p-15 overflow-hidden">
   <div class="hero-left animate-on-scroll">
     <div class="">
@@ -29,8 +29,63 @@
       <span>Organize your tasks with</span> real-time insights
     </h1>
     <p class="hero-description">
-      <span>Boost your productivity and stay organized with </span> Task Tree – your all-in-one task management solution.
+      <span>Boost your productivity and stay organized with </span> Task Tree – your all-in-one task management
+      solution.
     </p>
   </div>
   <img src="/images/image 1.png" alt="Task Manager Hero Image" class="hero-img animate-on-scroll" />
 </div>
+<!-- Mid Section -->
+<main class="main-section  ">
+  <div class="mid-container p-15">
+    <div class="mid-top">
+      <div class="highlight">
+        <div class="container1">
+          <button class="button">Why Task Tree</button>
+        </div>
+      </div>
+      <h2 class="mid-heading font-bold">
+        Track tasks efficiently in 3 simple steps
+      </h2>
+      <p class="mid-description">
+        Seamlessly organize and manage tasks with ease.
+        Complete more in less time with structured workflows.
+      </p>
+    </div>
+
+    <div class="mid-cards-container">
+      <!-- card 1 -->
+      <div class="card">
+        <img src="./images/chart-bar-33.svg" alt="chartImage" />
+        <h3 class="card-heading font-bold">Organized Task Overview</h3>
+        <p class="card-description">
+          <span> </span><span>Easily visualize and track progress across tasks, ensuring nothing falls through the
+            cracks. </span>
+
+        </p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="card mt-4">
+        <img src="./images/newsletter-dev.svg" alt="newsletterImage" />
+        <h3 class="card-heading font-bold">Smart Task Prioritization</h3>
+        <p class="card-description">
+          <span>Using intelligent algorithms, prioritize tasks based on deadlines,
+            dependencies, and team requirements for maximum efficiency.</span><span></span>
+        </p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="card">
+        <img src="./images/timeline.svg" alt="chartImage" />
+        <h3 class="card-heading font-bold">Real-time Updates</h3>
+        <p class="card-description">
+          <span>Receive instant updates on task statuses,
+            ensuring that every team member stays informed and aligned. </span><span> </span>
+        </p>
+      </div>
+    </div>
+
+
+  </div>
+</main>
