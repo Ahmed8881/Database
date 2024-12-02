@@ -1,3 +1,3 @@
-module db-project
+module goDatabase
 
 go 1.23.3
