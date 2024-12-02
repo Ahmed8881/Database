@@ -42,7 +42,7 @@ func (node BNode) SetHeader(nodeType, numKeys uint16) {
 }
 
 // Child node pointers
-// 
+//
 // returns the position of the pointer for the child node at index idx
 func (node BNode) GetPointer(idx uint16) uint64 {
 	if idx >= node.NumKeys() {
@@ -138,4 +138,46 @@ func (node BNode) nodeLookupLE(key []byte) uint16 {
 		}
 	}
 	return found
+}
+
+// Update node
+//
+// copies a KV into the position at idx
+func nodeAppendKV(new BNode, idx uint16, ptr uint64, key []byte, val []byte) {
+	new.SetPointer(idx, ptr)
+
+	pos := new.KvPos(idx)
+	binary.LittleEndian.PutUint16(new[pos:], uint16(len(key)))
+	binary.LittleEndian.PutUint16(new[pos+2:], uint16(len(val)))
+	copy(new[pos+4:], key)
+	copy(new[pos+4+uint16(len(key)):], val)
+
+	new.SetOffset(idx+1, new.GetOffset(idx)+4+uint16(len(key)+len(val)))
+}
+
+// copies multiple KVs into position from old node
+func nodeAppendRange(
+	new, old BNode,
+	dstNew, srcOld, n uint16,
+) {
+	for i := uint16(0); i < n; i++ {
+		nodeAppendKV(
+			new, dstNew+i,
+			old.GetPointer(srcOld+i),
+			old.GetKey(srcOld+i),
+			old.GetValue(srcOld+i),
+		)
+	}
+}
+
+// Add a new KV pair to a leaf node
+func LeafInsert(
+	new, old BNode,
+	idx uint16,
+	key, val []byte,
+) {
+	new.SetHeader(NodeTypeLeaf, old.NumKeys()+1)
+	nodeAppendRange(new, old, 0, 0, idx)
+	nodeAppendKV(new, idx, 0, key, val)
+	nodeAppendRange(new, old, idx+1, idx, old.NumKeys() - 1)
 }
