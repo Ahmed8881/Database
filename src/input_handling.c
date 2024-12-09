@@ -8,7 +8,7 @@ Input_Buffer *newInputBuffer() {
   return buf;
 }
 
-void print_prompt() { printf("sqlite > "); }
+void print_prompt() { printf("db > "); }
 
 void read_input(Input_Buffer *buf) {
   size_t buffer_size = 1024;

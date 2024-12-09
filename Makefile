@@ -20,4 +20,7 @@ $(OBJ_DIR)/%.o: %.c
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
+test:
+	python3 -m unittest tests.py
+
 .PHONY: all clean

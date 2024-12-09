@@ -11,11 +11,17 @@ typedef enum {
 
 typedef enum {
   PREPARE_SUCCESS,
+  PREPARE_NEGATIVE_ID,
+  PREPARE_STRING_TOO_LONG,
   PREPARE_UNRECOGNIZED_STATEMENT,
   PREPARE_SYNTAX_ERROR
 } PrepareResult;
 
-typedef enum { EXECUTE_SUCCESS, EXECUTE_TABLE_FULL, EXECUTE_UNRECOGNIZED_STATEMENT } ExecuteResult;
+typedef enum {
+  EXECUTE_SUCCESS,
+  EXECUTE_TABLE_FULL,
+  EXECUTE_UNRECOGNIZED_STATEMENT
+} ExecuteResult;
 
 typedef enum { STATEMENT_INSERT, STATEMENT_SELECT } StatementType;
 
@@ -25,6 +31,7 @@ typedef struct {
 } Statement;
 
 MetaCommandResult do_meta_command(Input_Buffer *buf);
+PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_statement(Statement *statement, Table *table);
 
