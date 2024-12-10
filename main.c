@@ -2,10 +2,17 @@
 #include "include/input_handling.h"
 #include "include/table.h"
 
-int main()
+int main(int argc, char *argv[])
 {
   // system("clear");
-  Table *table = new_table();
+  // Table *table = new_table();
+  if (argc < 2)
+  {
+    printf("Must supply a database filename.\n");
+    exit(EXIT_FAILURE);
+  }
+  Table *table = db_open(argv[1]);
+
   Input_Buffer *input_buf = newInputBuffer();
   while (1)
   {
