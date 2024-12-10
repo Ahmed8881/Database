@@ -79,6 +79,7 @@ Table *db_open(const char *file_name)
   Table *table = malloc(sizeof(Table));
   table->pager = pager;
   table->num_rows = num_rows;
+  printf("Table opened with %d rows.\n", num_rows); // Added debug print statement
   return table;
 }
 
@@ -107,6 +108,8 @@ Pager *pager_open(const char *file_name)
   {
     pager->pages[i] = NULL;
   }
+  printf("Pager opened with file length %ld.\n", file_length); // Added debug print statement
+
   return pager;
 }
 void *get_page(Pager *pager, uint32_t page_num)
@@ -202,4 +205,37 @@ void db_close(Table *table)
   }
   free(pager);
   free(table);
+}
+Cursor *table_start(Table *table)
+{
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = 0;
+  cursor->end_of_table = (table->num_rows == 0);
+  return cursor;
+}
+Cursor *table_end(Table *table)
+{
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = table->num_rows;
+  cursor->end_of_table = true;
+  return cursor;
+}
+void *cursor_value(Cursor *cursor)
+{
+  uint32_t row_num = cursor->row_num;
+  uint32_t page_num = row_num / ROWS_PER_PAGE;
+  void *page = get_page(cursor->table->pager, page_num);
+  uint32_t row_offset = row_num % ROWS_PER_PAGE;
+  uint32_t byte_offset = row_offset * ROW_SIZE;
+  return page + byte_offset;
+}
+void cursor_advance(Cursor *cursor)
+{
+  cursor->row_num += 1;
+  if (cursor->row_num >= cursor->table->num_rows)
+  {
+    cursor->end_of_table = true;
+  }
 }

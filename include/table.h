@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 255
@@ -50,6 +51,14 @@ typedef struct
   Pager *pager;
 } Table;
 
+typedef struct
+{
+  Table *table;
+  uint32_t row_num;
+  bool end_of_table;
+
+} Cursor;
+
 Table *new_table();
 void free_table(Table *table);
 void *row_slot(Table *table, uint32_t row_num);
@@ -58,5 +67,9 @@ Pager *pager_open(const char *file_name);
 void *get_page(Pager *pager, uint32_t page_num);
 void pager_flush(Pager *pager, uint32_t page_num, uint32_t size);
 void db_close(Table *table);
+Cursor *table_start(Table *table);
+Cursor *table_end(Table *table);
+void *cursor_value(Cursor *cursor);
+void cursor_advance(Cursor *cursor);
 
 #endif
