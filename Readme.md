@@ -76,10 +76,21 @@ The database currently supports a subset of SQL commands:
 The project files are organized as follows:
 ```
 Database/
-├── database.c         # Main source code for the database implementation
-├── test_script.py     # Python script for automated testing
-├── README.md          # Project documentation
-└── Makefile           # Build automation (if applicable)
+├── __pycache__/          # Compiled Python files
+├── include/              # Header files for the C source code
+│   ├── command_processor.h
+│   ├── input_handling.h
+│   └── table.h
+├── src/                  # C source files
+│   ├── command_processor.c
+│   ├── input_handling.c
+│   └── table.c
+├── main.c                # Main entry point for the C program
+├── Makefile              # Build automation script
+├── Readme.md             # Project documentation
+├── tests.py              # Python script for automated testing
+└── .gitignore            # Git ignore file
+
 ```
 
 ---
