@@ -4,12 +4,14 @@
 #include "input_handling.h"
 #include "table.h"
 
-typedef enum {
+typedef enum
+{
   META_COMMAND_SUCCESS,
   META_COMMAND_UNRECOGNIZED_COMMAND
 } MetaCommandResult;
 
-typedef enum {
+typedef enum
+{
   PREPARE_SUCCESS,
   PREPARE_NEGATIVE_ID,
   PREPARE_STRING_TOO_LONG,
@@ -17,20 +19,26 @@ typedef enum {
   PREPARE_SYNTAX_ERROR
 } PrepareResult;
 
-typedef enum {
+typedef enum
+{
   EXECUTE_SUCCESS,
   EXECUTE_TABLE_FULL,
   EXECUTE_UNRECOGNIZED_STATEMENT
 } ExecuteResult;
 
-typedef enum { STATEMENT_INSERT, STATEMENT_SELECT } StatementType;
+typedef enum
+{
+  STATEMENT_INSERT,
+  STATEMENT_SELECT
+} StatementType;
 
-typedef struct {
+typedef struct
+{
   StatementType type;
   Row row_to_insert;
 } Statement;
 
-MetaCommandResult do_meta_command(Input_Buffer *buf);
+MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table);
 PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_statement(Statement *statement, Table *table);

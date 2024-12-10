@@ -9,7 +9,8 @@
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 255
 
-typedef struct {
+typedef struct
+{
   uint32_t id;
   char username[COLUMN_USERNAME_SIZE + 1];
   char email[COLUMN_EMAIL_SIZE + 1];
@@ -34,13 +35,28 @@ void serialize_row(Row *source, void *destination);
 void deserialize_row(void *source, Row *destination);
 void print_row(Row *row);
 
-typedef struct {
+// struc for pages
+typedef struct
+{
+  int file_descriptor;          // basically number return by os when file is opened that if read or write to file
+  uint32_t file_length;         // length of file
+  void *pages[TABLE_MAX_PAGES]; // array of pointrs where each pointer refers to a page and which takes data from disk as needed
+} Pager;
+
+typedef struct
+{
   uint32_t num_rows;
-  void *pages[TABLE_MAX_PAGES];
+  // void *pages[TABLE_MAX_PAGES];
+  Pager *pager;
 } Table;
 
 Table *new_table();
 void free_table(Table *table);
 void *row_slot(Table *table, uint32_t row_num);
+Table *db_open(const char *file_name);
+Pager *pager_open(const char *file_name);
+void *get_page(Pager *pager, uint32_t page_num);
+void pager_flush(Pager *pager, uint32_t page_num, uint32_t size);
+void db_close(Table *table);
 
 #endif

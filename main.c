@@ -2,23 +2,30 @@
 #include "include/input_handling.h"
 #include "include/table.h"
 
-int main() {
+int main()
+{
   // system("clear");
   Table *table = new_table();
   Input_Buffer *input_buf = newInputBuffer();
-  while (1) {
+  while (1)
+  {
     read_input(input_buf);
-    if (input_buf->buffer[0] == '.') {
-      switch (do_meta_command(input_buf)) {
+    if (input_buf->buffer[0] == '.')
+    {
+      switch (do_meta_command(input_buf, table))
+      {
       case META_COMMAND_SUCCESS:
         continue;
       case META_COMMAND_UNRECOGNIZED_COMMAND:
         printf("Unrecognized command %s\n", input_buf->buffer);
         continue;
       }
-    } else {
+    }
+    else
+    {
       Statement statement;
-      switch (prepare_statement(input_buf, &statement)) {
+      switch (prepare_statement(input_buf, &statement))
+      {
       case PREPARE_SUCCESS:
         break;
       case PREPARE_NEGATIVE_ID:
@@ -35,7 +42,8 @@ int main() {
                input_buf->buffer);
         continue;
       }
-      switch (execute_statement(&statement, table)) {
+      switch (execute_statement(&statement, table))
+      {
       case EXECUTE_SUCCESS:
         printf("Executed.\n");
         break;
