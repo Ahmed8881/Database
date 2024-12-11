@@ -12,7 +12,6 @@ int main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
   Table *table = db_open(argv[1]);
-  printf("Database opened: %s\n", argv[1]); // Added debug print statement
 
   Input_Buffer *input_buf = newInputBuffer();
   while (1)

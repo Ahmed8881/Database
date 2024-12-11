@@ -18,9 +18,9 @@ $(OBJ_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__
+	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache test.db
 
 test:
-	python3 -m unittest tests.py
+	pytest test_db.py
 
 .PHONY: all clean

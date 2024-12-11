@@ -1,10 +1,11 @@
 import unittest
 import subprocess
+import os
 
 class TestDatabase(unittest.TestCase):
 
-    def run_script(self, commands):
-        process = subprocess.Popen(["bin/db-project"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    def run_script(self, commands, program="./bin/db-project"):
+        process = subprocess.Popen([program, "test.db"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         for command in commands:
             process.stdin.write(command + "\n")
         process.stdin.close()
@@ -25,12 +26,14 @@ class TestDatabase(unittest.TestCase):
             "Executed.",
             "db > ",
         ])
+        os.remove("test.db")
 
     def test_prints_error_message_when_table_is_full(self):
         script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 1402)]
         script.append(".exit")
         result = self.run_script(script)
         self.assertEqual(result[-2], 'db > Error: Table full.')
+        os.remove("test.db")
 
     def test_allows_inserting_strings_that_are_the_maximum_length(self):
         long_username = "a" * 32
@@ -47,6 +50,7 @@ class TestDatabase(unittest.TestCase):
             "Executed.",
             "db > ",
         ])
+        os.remove("test.db")
 
     def test_prints_error_message_if_strings_are_too_long(self):
         long_username = "a" * 33
@@ -62,6 +66,7 @@ class TestDatabase(unittest.TestCase):
             "db > Executed.",
             "db > ",
         ])
+        os.remove("test.db")
 
     def test_prints_an_error_message_if_id_is_negative(self):
         script = [
@@ -75,6 +80,26 @@ class TestDatabase(unittest.TestCase):
             "db > Executed.",
             "db > ",
         ])
+        os.remove("test.db")
 
+    def test_keeps_data_after_closing_connection(self):
+        result1 = self.run_script([
+            "insert 1 user1 person1@example.com",
+            ".exit",
+        ])
+        self.assertEqual(result1, [
+            "db > Executed.",
+            "db > ",
+        ])
+        result2 = self.run_script([
+            "select",
+            ".exit",
+        ])
+        self.assertEqual(result2, [
+            "db > (1, user1, person1@example.com)",
+            "Executed.",
+            "db > ",
+        ])
+        os.remove("test.db")
 if __name__ == '__main__':
     unittest.main()
