@@ -121,8 +121,6 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
     }
   }
 
-  Cursor *cursor = table_end(table);
-
   leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
   free(cursor);
 
