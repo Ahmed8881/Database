@@ -2,6 +2,7 @@
 #define BTREE_H
 
 #include "table.h"
+#include "cursor.h"
 
 // Node Header Layout
 #define NODE_TYPE_SIZE sizeof(uint8_t)
@@ -24,13 +25,22 @@
 #define LEAF_NODE_SPACE_FOR_CELLS (PAGE_SIZE - LEAF_NODE_HEADER_SIZE)
 #define LEAF_NODE_MAX_CELLS (LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE)
 
+// enums
+typedef enum
+{
+   NODE_INTERNAL,
+   NODE_LEAF
+} NodeType;
 // Function declarations
-void initialize_leaf_node(void* node);
-uint32_t* leaf_node_num_cells(void* node);
-void* leaf_node_cell(void* node, uint32_t cell_num);
-uint32_t* leaf_node_key(void* node, uint32_t cell_num);
-void* leaf_node_value(void* node, uint32_t cell_num);
-void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value);
-Cursor* table_find(Table* table, uint32_t key);
+void initialize_leaf_node(void *node);
+uint32_t *leaf_node_num_cells(void *node);
+void *leaf_node_cell(void *node, uint32_t cell_num);
+uint32_t *leaf_node_key(void *node, uint32_t cell_num);
+void *leaf_node_value(void *node, uint32_t cell_num);
+void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value);
+Cursor *table_find(Table *table, uint32_t key);
+Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key);
+NodeType get_node_type(void *node);
+void set_node_type(void *node, NodeType type);
 
 #endif

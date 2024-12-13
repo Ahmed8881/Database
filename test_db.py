@@ -101,5 +101,39 @@ class TestDatabase(unittest.TestCase):
             "db > ",
         ])
         os.remove("test.db")
+    def test_prints_constants(self):
+        script = [
+            ".constants",
+            ".exit",
+        ]
+        result = self.run_script(script)
+        self.assertEqual(result, [
+            "db > Constants:",
+            "ROW_SIZE: 293",
+            "COMMON_NODE_HEADER_SIZE: 6",
+            "LEAF_NODE_HEADER_SIZE: 10",
+            "LEAF_NODE_CELL_SIZE: 297",
+            "LEAF_NODE_SPACE_FOR_CELLS: 4086",
+            "LEAF_NODE_MAX_CELLS: 13",
+            "db > ",
+        ])
+        os.remove("test.db")
+    def test_allows_printing_out_the_structure_of_a_one_node_btree(self):
+        script = [f"insert {i} user{i} person{i}@example.com" for i in [3, 1, 2]]
+        script.append(".btree")
+        script.append(".exit")
+        result = self.run_script(script)
+        self.assertEqual(result, [
+            "db > Executed.",
+            "db > Executed.",
+            "db > Executed.",
+            "db > Tree:",
+            "leaf (size 3)",
+            "  - 0 : 1",
+            "  - 1 : 2",
+            "  - 2 : 3",
+            "db > ",
+        ])
+        os.remove("test.db")
 if __name__ == '__main__':
     unittest.main()

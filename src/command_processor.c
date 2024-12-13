@@ -1,6 +1,28 @@
 #include "../include/command_processor.h"
 #include <string.h>
 #include "../include/table.h"
+#include "../include/cursor.h"
+#include "../include/btree.h"
+
+void print_constants()
+{
+  printf("ROW_SIZE: %ld\n", ROW_SIZE);
+  printf("COMMON_NODE_HEADER_SIZE: %ld\n", COMMON_NODE_HEADER_SIZE);
+  printf("LEAF_NODE_HEADER_SIZE: %ld\n", LEAF_NODE_HEADER_SIZE);
+  printf("LEAF_NODE_CELL_SIZE: %ld\n", LEAF_NODE_CELL_SIZE);
+  printf("LEAF_NODE_SPACE_FOR_CELLS: %ld\n", LEAF_NODE_SPACE_FOR_CELLS);
+  printf("LEAF_NODE_MAX_CELLS: %ld\n", LEAF_NODE_MAX_CELLS);
+}
+void print_leaf_node(void *node)
+{
+  uint32_t num_cells = *leaf_node_num_cells(node);
+  printf("leaf (size %d)\n", num_cells);
+  for (uint32_t i = 0; i < num_cells; i++)
+  {
+    uint32_t key = *leaf_node_key(node, i);
+    printf("  - %d : %d\n", i, key);
+  }
+}
 
 MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table)
 {
@@ -9,6 +31,19 @@ MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table)
     db_close(table);
     exit(EXIT_SUCCESS);
   }
+  else if (strcmp(buf->buffer, ".btree") == 0)
+  {
+    printf("Tree:\n");
+    print_leaf_node(get_page(table->pager, 0));
+    return META_COMMAND_SUCCESS;
+  }
+  else if (strcmp(buf->buffer, ".constants") == 0)
+  {
+    printf("Constants:\n");
+    print_constants();
+    return META_COMMAND_SUCCESS;
+  }
+
   else
   {
     return META_COMMAND_UNRECOGNIZED_COMMAND;
@@ -65,17 +100,30 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
 
 ExecuteResult execute_insert(Statement *statement, Table *table)
 {
-  if (table->num_rows >= TABLE_MAX_ROWS)
+  void *node = get_page(table->pager, table->root_page_num);
+  uint32_t num_cells = *leaf_node_num_cells(node);
+  if (num_cells >= LEAF_NODE_MAX_CELLS)
   {
     return EXECUTE_TABLE_FULL;
   }
 
   Row *row_to_insert = &(statement->row_to_insert);
+  uint32_t key_to_insert = row_to_insert->id;
+  Cursor *cursor = table_find(table, key_to_insert);
+  if (cursor->cell_num < num_cells)
+  {
+    // if key already exists
+    uint32_t key_at_index = *leaf_node_key(node, cursor->cell_num);
+    if (key_at_index == key_to_insert)
+    {
+      free(cursor);
+      return EXECUTE_DUPLICATE_KEY;
+    }
+  }
+
   Cursor *cursor = table_end(table);
 
-  // serialize_row(row_to_insert, row_slot(table, table->num_rows));
-  serialize_row(row_to_insert, cursor_value(cursor));
-  table->num_rows++;
+  leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
   free(cursor);
 
   return EXECUTE_SUCCESS;
@@ -89,11 +137,6 @@ ExecuteResult execute_select(Statement *statement, Table *table)
   {
   }
   Row row;
-  // for (uint32_t i = 0; i < table->num_rows; i++)
-  // {
-  //   deserialize_row(row_slot(table, i), &row);
-  //   print_row(&row);
-  // }
   while (!cursor->end_of_table)
   {
     deserialize_row(cursor_value(cursor), &row);
