@@ -135,5 +135,21 @@ class TestDatabase(unittest.TestCase):
             "db > ",
         ])
         os.remove("test.db")
+    def test_prints_an_error_message_if_there_is_a_duplicate_id(self):
+        script = [
+            "insert 1 user1 person1@example.com",
+            "insert 1 user1 person1@example.com",
+            "select",
+            ".exit",
+        ]
+        result = self.run_script(script)
+        self.assertEqual(result, [
+            "db > Executed.",
+            "db > Error: Duplicate key.",
+            "db > (1, user1, person1@example.com)",
+            "Executed.",
+            "db > ",
+        ])
+        os.remove("test.db")
 if __name__ == '__main__':
     unittest.main()
