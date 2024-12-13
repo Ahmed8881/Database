@@ -50,13 +50,18 @@ typedef struct {
   Pager *pager;
 } Table;
 
+// typedef struct {
+//   Table *table;
+//   uint32_t row_num;
+//   bool end_of_table;
+
+// } Cursor;
 typedef struct {
-  Table *table;
-  uint32_t row_num;
-  bool end_of_table;
-
+    Table* table;
+    uint32_t page_num;
+    uint32_t cell_num;
+    bool end_of_table;
 } Cursor;
-
 Table *new_table();
 void free_table(Table *table);
 void *row_slot(Table *table, uint32_t row_num);
