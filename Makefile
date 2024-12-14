@@ -21,6 +21,7 @@ clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache test.db
 
 test:
-	pytest test_db.py
+	# -vv for verbose output
+	pytest -vv test_db.py
 
 .PHONY: all clean

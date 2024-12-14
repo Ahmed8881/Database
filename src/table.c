@@ -4,6 +4,7 @@
 #include "../include/pager.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #ifdef _WIN32
@@ -40,18 +41,6 @@ void print_row(Row *row) {
   printf("(%d, %s, %s)\n", row->id, row->username, row->email);
 }
 
-// Table *new_table()
-// {
-//   Table *table = (Table *)malloc(sizeof(Table));
-//   table->num_rows = 0;
-//   // for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++)
-//   // {
-//   //   table->pages[i] = NULL;
-//   // }
-//   table->pager = NULL;
-//   return table;
-// }
-
 void free_table(Table *table) {
   for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
     free(table->pager->pages[i]);
@@ -61,12 +50,6 @@ void free_table(Table *table) {
 
 void *row_slot(Table *table, uint32_t row_num) {
   uint32_t page_num = row_num / ROWS_PER_PAGE;
-  // void *page = table->pager->pages[page_num];
-  // if (page == NULL)
-  // {
-  //   // Only allocate memory when we try to access page
-  //   page = table->pager->pages[page_num] = malloc(PAGE_SIZE);
-  // }
   void *page = get_page(table->pager, page_num);
   uint32_t row_offset = row_num % ROWS_PER_PAGE;
   uint32_t byte_offset = row_offset * ROW_SIZE;
@@ -176,15 +159,6 @@ void db_close(Table *table) {
     free(pager->pages[i]);
     pager->pages[i] = NULL;
   }
-  // uint32_t num_additional_rows = table->num_rows % ROWS_PER_PAGE;
-  // if (num_additional_rows > 0) {
-  //   uint32_t page_num = num_full_pages;
-  //   if (pager->pages[page_num] != NULL) {
-  //     pager_flush(pager, page_num, num_additional_rows * ROW_SIZE);
-  //     free(pager->pages[page_num]);
-  //     pager->pages[page_num] = NULL;
-  //   }
-  // }
   int result = close(pager->file_descriptor);
   if (result == -1) {
     printf("Error closing db file.\n");
@@ -201,18 +175,14 @@ void db_close(Table *table) {
   free(table);
 }
 Cursor *table_start(Table *table) {
-  Cursor *cursor = malloc(sizeof(Cursor));
-  cursor->table = table;
-  cursor->page_num = table->root_page_num;
-  void *root_node = get_page(table->pager, table->root_page_num);
-  uint32_t num_cells = *leaf_node_num_cells(root_node);
-  cursor->cell_num = 0;
+  Cursor *cursor = table_find(table, 0);
+
+  void *node = get_page(table->pager, cursor->page_num);
+  uint32_t num_cells = *leaf_node_num_cells(node);
   cursor->end_of_table = (num_cells == 0);
 
   return cursor;
 }
-// remove table_end
-// instead we use method that searches for the given key defined in btree.h
 
 void *cursor_value(Cursor *cursor) {
 
@@ -226,6 +196,14 @@ void cursor_advance(Cursor *cursor) {
   void *node = get_page(cursor->table->pager, page_num);
   cursor->cell_num += 1;
   if (cursor->cell_num >= *leaf_node_num_cells(node)) {
-    cursor->end_of_table = true;
+    // Advance to next leaf node
+    uint32_t next_page_num = *leaf_node_next_leaf(node);
+    if (next_page_num == 0) {
+      // this is rightmost leaf node
+      cursor->end_of_table = true;
+    } else {
+      cursor->page_num = next_page_num;
+      cursor->cell_num = 0;
+    }
   }
 }

@@ -16,11 +16,20 @@
 #define COMMON_NODE_HEADER_SIZE                                                \
   (NODE_TYPE_SIZE + IS_ROOT_SIZE + PARENT_POINTER_SIZE)
 
-// Leaf Node Layout
+/***  Leaf Node Header Layout start ***/
 #define LEAF_NODE_NUM_CELLS_SIZE sizeof(uint32_t)
 #define LEAF_NODE_NUM_CELLS_OFFSET COMMON_NODE_HEADER_SIZE
+// siblings start
+#define LEAF_NODE_NEXT_LEAF_SIZE sizeof(uint32_t)
+#define LEAF_NODE_NEXT_LEAF_OFFSET                                             \
+  (LEAF_NODE_NUM_CELLS_OFFSET + LEAF_NODE_NUM_CELLS_SIZE)
+// siblings end
 #define LEAF_NODE_HEADER_SIZE                                                  \
-  (COMMON_NODE_HEADER_SIZE + LEAF_NODE_NUM_CELLS_SIZE)
+  (COMMON_NODE_HEADER_SIZE + LEAF_NODE_NUM_CELLS_SIZE +                        \
+   LEAF_NODE_NEXT_LEAF_SIZE)
+/***  Leaf Node Header Layout end ***/
+
+/***  Leaf Node body Layout start ***/
 #define LEAF_NODE_KEY_SIZE sizeof(uint32_t)
 #define LEAF_NODE_KEY_OFFSET 0
 #define LEAF_NODE_VALUE_SIZE (sizeof(Row))
@@ -31,6 +40,7 @@
 #define LEAF_NODE_RIGHT_SPLIT_COUNT ((LEAF_NODE_MAX_CELLS + 1) / 2)
 #define LEAF_NODE_LEFT_SPLIT_COUNT                                             \
   (LEAF_NODE_MAX_CELLS + 1 - LEAF_NODE_RIGHT_SPLIT_COUNT)
+/***  Leaf Node body Layout end ***/
 
 // Internal Node Header Layout
 #define INTERNAL_NODE_NUM_KEYS_SIZE sizeof(uint32_t)
@@ -62,6 +72,7 @@ void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value);
 Cursor *table_find(Table *table, uint32_t key);
 Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key);
 void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value);
+uint32_t *leaf_node_next_leaf(void *node);
 /*** Leaf Node end ***/
 
 NodeType get_node_type(void *node);

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 
+/*** Leaf Node start ***/
 uint32_t *leaf_node_num_cells(void *node) {
   return (uint32_t *)((uint8_t *)node + LEAF_NODE_NUM_CELLS_OFFSET);
 }
@@ -23,6 +24,7 @@ void initialize_leaf_node(void *node) {
   set_node_type(node, NODE_LEAF);
   set_node_root(node, false);
   *leaf_node_num_cells(node) = 0;
+  *leaf_node_next_leaf(node) = 0; // 0 means no sibling
 }
 
 void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value) {
@@ -95,6 +97,8 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
   uint32_t new_page_num = get_unused_page_num(cursor->table->pager);
   void *new_node = get_page(cursor->table->pager, new_page_num);
   initialize_leaf_node(new_node);
+  *leaf_node_next_leaf(new_node) = *leaf_node_next_leaf(old_node);
+  *leaf_node_next_leaf(old_node) = new_page_num;
 
   // All existing keys plus new key
   uint32_t temp_keys[LEAF_NODE_MAX_CELLS + 1];
@@ -136,7 +140,12 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
     exit(EXIT_FAILURE);
   }
 }
+uint32_t *leaf_node_next_leaf(void *node) {
+  return node + LEAF_NODE_NEXT_LEAF_OFFSET;
+}
+/*** Leaf Node end ***/
 
+/*** Internal Node start ***/
 uint32_t *internal_node_num_keys(void *node) {
   return node + INTERNAL_NODE_NUM_KEYS_OFFSET;
 }
@@ -199,6 +208,7 @@ void initialize_internal_node(void *node) {
   set_node_root(node, false);
   *internal_node_num_keys(node) = 0;
 }
+/*** Internal Node end ***/
 
 uint32_t get_unused_page_num(Pager *pager) { return pager->num_pages; }
 

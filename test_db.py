@@ -1,23 +1,27 @@
 import subprocess
 import os
-import pytest
 
 class TestDatabase:
 
     def run_script(self, commands, program="./bin/db-project"):
         process = subprocess.Popen([program, "test.db"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        for command in commands:
-            try:
+        try:
+            for command in commands:
                 process.stdin.write(command + "\n")
-            except BrokenPipeError:
-                break
-        process.stdin.close()
-        raw_output = process.stdout.read()
-        process.stdout.close()
-        process.wait()
-        return raw_output.split("\n")
+            process.stdin.close()
+            raw_output = process.stdout.read()
+            process.stdout.close()
+            process.wait()
+            return raw_output.split("\n")
+        except BrokenPipeError:
+            raw_output = process.stdout.read()
+            process.stdout.close()
+            process.wait()
+            return raw_output.split("\n")
 
     def test_inserts_and_retrieves_a_row(self):
+        if os.path.exists("test.db"):
+            os.remove("test.db")
         result = self.run_script([
             "insert 1 user1 person1@example.com",
             "select",
@@ -35,7 +39,6 @@ class TestDatabase:
         script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 1402)]
         script.append(".exit")
         result = self.run_script(script)
-        # assert result[-2] == 'db > Executed.'
         assert result[-2] == 'db > Need to implement updating parent after split'
         os.remove("test.db")
 
@@ -116,9 +119,9 @@ class TestDatabase:
             "db > Constants:",
             "ROW_SIZE: 293",
             "COMMON_NODE_HEADER_SIZE: 6",
-            "LEAF_NODE_HEADER_SIZE: 10",
+            "LEAF_NODE_HEADER_SIZE: 14",
             "LEAF_NODE_CELL_SIZE: 297",
-            "LEAF_NODE_SPACE_FOR_CELLS: 4086",
+            "LEAF_NODE_SPACE_FOR_CELLS: 4082",
             "LEAF_NODE_MAX_CELLS: 13",
             "db > ",
         ]
@@ -189,3 +192,22 @@ class TestDatabase:
         "db > "
         ]
         os.remove("test.db")
+
+    def test_prints_all_rows_in_multi_level_tree(self):
+            script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 16)]
+            script.append("select")
+            script.append(".exit")
+
+            result = self.run_script(script)
+
+            expected_inserts_output = ["db > Executed."] * 15
+
+            expected_select_output = ["db > (1, user1, person1@example.com)"]
+            expected_select_output += [f"({i}, user{i}, person{i}@example.com)" for i in range(2, 16)]
+            expected_select_output += ["Executed.", "db > "]
+
+            expected_output = expected_inserts_output + expected_select_output
+
+            assert result == expected_output, f"Expected output does not match actual output.\nExpected: {expected_output}\nActual: {result}"
+
+            os.remove("test.db")
