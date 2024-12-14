@@ -23,7 +23,8 @@ typedef enum
 {
   EXECUTE_SUCCESS,
   EXECUTE_TABLE_FULL,
-  EXECUTE_UNRECOGNIZED_STATEMENT
+  EXECUTE_UNRECOGNIZED_STATEMENT,
+  EXECUTE_DUPLICATE_KEY
 } ExecuteResult;
 
 typedef enum
@@ -37,7 +38,8 @@ typedef struct
   StatementType type;
   Row row_to_insert;
 } Statement;
-
+void print_constants();
+void print_leaf_node(void *node);
 MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table);
 PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);

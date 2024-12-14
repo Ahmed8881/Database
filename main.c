@@ -1,6 +1,9 @@
 #include "include/command_processor.h"
 #include "include/input_handling.h"
 #include "include/table.h"
+#include "include/btree.h"
+#include "include/cursor.h"
+#include "include/pager.h"
 
 int main(int argc, char *argv[])
 {
@@ -53,6 +56,9 @@ int main(int argc, char *argv[])
       {
       case EXECUTE_SUCCESS:
         printf("Executed.\n");
+        break;
+      case EXECUTE_DUPLICATE_KEY:
+        printf("Error: Duplicate key.\n");
         break;
       case EXECUTE_TABLE_FULL:
         printf("Error: Table full.\n");
