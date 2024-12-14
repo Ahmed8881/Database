@@ -101,6 +101,7 @@ class TestDatabase(unittest.TestCase):
             "db > ",
         ])
         os.remove("test.db")
+
     def test_prints_constants(self):
         script = [
             ".constants",
@@ -118,6 +119,7 @@ class TestDatabase(unittest.TestCase):
             "db > ",
         ])
         os.remove("test.db")
+
     def test_allows_printing_out_the_structure_of_a_one_node_btree(self):
         script = [f"insert {i} user{i} person{i}@example.com" for i in [3, 1, 2]]
         script.append(".btree")
@@ -152,34 +154,36 @@ class TestDatabase(unittest.TestCase):
             "db > ",
         ])
         os.remove("test.db")
-        def test_allows_printing_out_the_structure_of_a_3_leaf_node_btree(self):
-            script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 15)]
-            script.append(".btree")
-            script.append("insert 15 user15 person15@example.com")
-            script.append(".exit")
-            result = self.run_script(script)
-            self.assertEqual(result[14:len(result)], [
-                "db > Tree:",
-                "- internal (size 1)",
-                "  - leaf (size 7)",
-                "    - 1",
-                "    - 2",
-                "    - 3",
-                "    - 4",
-                "    - 5",
-                "    - 6",
-                "    - 7",
-                "  - key 7",
-                "  - leaf (size 7)",
-                "    - 8",
-                "    - 9",
-                "    - 10",
-                "    - 11",
-                "    - 12",
-                "    - 13",
-                "    - 14",
-                "db > Need to implement searching an internal node",
-            ])
-            os.remove("test.db")
+
+    def test_allows_printing_out_the_structure_of_a_3_leaf_node_btree(self):
+        script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 15)]
+        script.append(".btree")
+        script.append("insert 15 user15 person15@example.com")
+        script.append(".exit")
+        result = self.run_script(script)
+        self.assertEqual(result[14:len(result)], [
+        "db > Tree:",
+        "- internal (size 1)",
+        "  - leaf (size 7)",
+        "    - 1",
+        "    - 2",
+        "    - 3",
+        "    - 4",
+        "    - 5",
+        "    - 6",
+        "    - 7",
+        "  - key 7",
+        "  - leaf (size 7)",
+        "    - 8",
+        "    - 9",
+        "    - 10",
+        "    - 11",
+        "    - 12",
+        "    - 13",
+        "    - 14",
+        "db > Need to implement searching an internal node",
+        ])
+        os.remove("test.db")
+
 if __name__ == '__main__':
     unittest.main()

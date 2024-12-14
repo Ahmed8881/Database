@@ -128,15 +128,15 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
 }
 
 uint32_t *internal_node_num_keys(void *node) {
-  return (uint32_t *)((uint8_t *)node + INTERNAL_NODE_NUM_KEYS_OFFSET);
+  return node + INTERNAL_NODE_NUM_KEYS_OFFSET;
 }
 
 uint32_t *internal_node_right_child(void *node) {
-  return (uint32_t *)((uint8_t *)node + INTERNAL_NODE_RIGHT_CHILD_OFFSET);
+  return node + INTERNAL_NODE_RIGHT_CHILD_OFFSET;
 }
 
 void *internal_node_cell(void *node, uint32_t cell_num) {
-  return (uint8_t *)node + INTERNAL_NODE_HEADER_SIZE +
+  return node + INTERNAL_NODE_HEADER_SIZE +
          cell_num * INTERNAL_NODE_CELL_SIZE;
 }
 
