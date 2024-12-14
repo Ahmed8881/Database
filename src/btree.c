@@ -97,33 +97,44 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
   void *new_node = get_page(cursor->table->pager, new_page_num);
   initialize_leaf_node(new_node);
 
-  for (int32_t i = LEAF_NODE_MAX_CELLS; i >= 0; i--) {
-    void *destination_node;
-    if (i >= LEAF_NODE_LEFT_SPLIT_COUNT) {
-      destination_node = new_node;
-    } else {
-      destination_node = old_node;
-    }
-    uint32_t index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT;
-    void *destination = leaf_node_cell(destination_node, index_within_node);
+  // All existing keys plus new key
+  uint32_t temp_keys[LEAF_NODE_MAX_CELLS + 1];
+  Row temp_values[LEAF_NODE_MAX_CELLS + 1];
 
+  // Copy all existing keys and values plus the new key and value into temp
+  // arrays
+  for (uint32_t i = 0; i < LEAF_NODE_MAX_CELLS + 1; i++) {
     if (i == cursor->cell_num) {
-      serialize_row(value, destination);
-    } else if (i > cursor->cell_num) {
-      memcpy(destination, leaf_node_cell(old_node, i - 1), LEAF_NODE_CELL_SIZE);
+      temp_keys[i] = key;
+      temp_values[i] = *value;
+    } else if (i < cursor->cell_num) {
+      temp_keys[i] = *leaf_node_key(old_node, i);
+      deserialize_row(leaf_node_value(old_node, i), &temp_values[i]);
     } else {
-      memcpy(destination, leaf_node_cell(old_node, i), LEAF_NODE_CELL_SIZE);
+      temp_keys[i] = *leaf_node_key(old_node, i - 1);
+      deserialize_row(leaf_node_value(old_node, i - 1), &temp_values[i]);
     }
+  }
 
-    *(leaf_node_num_cells(old_node)) = LEAF_NODE_LEFT_SPLIT_COUNT;
-    *(leaf_node_num_cells(new_node)) = LEAF_NODE_RIGHT_SPLIT_COUNT;
+  // Split the keys and values between the old (left) and new (right) nodes
+  for (uint32_t i = 0; i < LEAF_NODE_LEFT_SPLIT_COUNT; i++) {
+    *leaf_node_key(old_node, i) = temp_keys[i];
+    serialize_row(&temp_values[i], leaf_node_value(old_node, i));
+  }
+  for (uint32_t i = 0; i < LEAF_NODE_RIGHT_SPLIT_COUNT; i++) {
+    *leaf_node_key(new_node, i) = temp_keys[LEAF_NODE_LEFT_SPLIT_COUNT + i];
+    serialize_row(&temp_values[LEAF_NODE_LEFT_SPLIT_COUNT + i],
+                  leaf_node_value(new_node, i));
+  }
 
-    if (is_node_root(old_node)) {
-      return create_root_node(cursor->table, new_page_num);
-    } else {
-      printf("Need to implement updating parent after split\n");
-      exit(EXIT_FAILURE);
-    }
+  *leaf_node_num_cells(old_node) = LEAF_NODE_LEFT_SPLIT_COUNT;
+  *leaf_node_num_cells(new_node) = LEAF_NODE_RIGHT_SPLIT_COUNT;
+
+  if (is_node_root(old_node)) {
+    return create_root_node(cursor->table, new_page_num);
+  } else {
+    printf("Need to implement updating parent after split\n");
+    exit(EXIT_FAILURE);
   }
 }
 
@@ -136,8 +147,7 @@ uint32_t *internal_node_right_child(void *node) {
 }
 
 void *internal_node_cell(void *node, uint32_t cell_num) {
-  return node + INTERNAL_NODE_HEADER_SIZE +
-         cell_num * INTERNAL_NODE_CELL_SIZE;
+  return node + INTERNAL_NODE_HEADER_SIZE + cell_num * INTERNAL_NODE_CELL_SIZE;
 }
 
 uint32_t *internal_node_child(void *node, uint32_t child_num) {

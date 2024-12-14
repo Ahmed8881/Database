@@ -1,8 +1,8 @@
-import unittest
 import subprocess
 import os
+import pytest
 
-class TestDatabase(unittest.TestCase):
+class TestDatabase:
 
     def run_script(self, commands, program="./bin/db-project"):
         process = subprocess.Popen([program, "test.db"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -20,19 +20,19 @@ class TestDatabase(unittest.TestCase):
             "select",
             ".exit",
         ])
-        self.assertEqual(result, [
+        assert result == [
             "db > Executed.",
             "db > (1, user1, person1@example.com)",
             "Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_prints_error_message_when_table_is_full(self):
         script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 1402)]
         script.append(".exit")
         result = self.run_script(script)
-        self.assertEqual(result[-2], 'db > Error: Table full.')
+        assert result[-2] == 'db > Error: Table full.'
         os.remove("test.db")
 
     def test_allows_inserting_strings_that_are_the_maximum_length(self):
@@ -44,12 +44,12 @@ class TestDatabase(unittest.TestCase):
             ".exit",
         ]
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > Executed.",
             f"db > (1, {long_username}, {long_email})",
             "Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_prints_error_message_if_strings_are_too_long(self):
@@ -61,11 +61,11 @@ class TestDatabase(unittest.TestCase):
             ".exit",
         ]
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > String is too long.",
             "db > Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_prints_an_error_message_if_id_is_negative(self):
@@ -75,11 +75,11 @@ class TestDatabase(unittest.TestCase):
             ".exit",
         ]
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > ID must be positive.",
             "db > Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_keeps_data_after_closing_connection(self):
@@ -87,19 +87,19 @@ class TestDatabase(unittest.TestCase):
             "insert 1 user1 person1@example.com",
             ".exit",
         ])
-        self.assertEqual(result1, [
+        assert result1 == [
             "db > Executed.",
             "db > ",
-        ])
+        ]
         result2 = self.run_script([
             "select",
             ".exit",
         ])
-        self.assertEqual(result2, [
+        assert result2 == [
             "db > (1, user1, person1@example.com)",
             "Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_prints_constants(self):
@@ -108,7 +108,7 @@ class TestDatabase(unittest.TestCase):
             ".exit",
         ]
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > Constants:",
             "ROW_SIZE: 293",
             "COMMON_NODE_HEADER_SIZE: 6",
@@ -117,7 +117,7 @@ class TestDatabase(unittest.TestCase):
             "LEAF_NODE_SPACE_FOR_CELLS: 4086",
             "LEAF_NODE_MAX_CELLS: 13",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_allows_printing_out_the_structure_of_a_one_node_btree(self):
@@ -125,7 +125,7 @@ class TestDatabase(unittest.TestCase):
         script.append(".btree")
         script.append(".exit")
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > Executed.",
             "db > Executed.",
             "db > Executed.",
@@ -135,7 +135,7 @@ class TestDatabase(unittest.TestCase):
             "  - 2",
             "  - 3",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_prints_an_error_message_if_there_is_a_duplicate_id(self):
@@ -146,13 +146,13 @@ class TestDatabase(unittest.TestCase):
             ".exit",
         ]
         result = self.run_script(script)
-        self.assertEqual(result, [
+        assert result == [
             "db > Executed.",
             "db > Error: Duplicate key.",
             "db > (1, user1, person1@example.com)",
             "Executed.",
             "db > ",
-        ])
+        ]
         os.remove("test.db")
 
     def test_allows_printing_out_the_structure_of_a_3_leaf_node_btree(self):
@@ -161,7 +161,7 @@ class TestDatabase(unittest.TestCase):
         script.append("insert 15 user15 person15@example.com")
         script.append(".exit")
         result = self.run_script(script)
-        self.assertEqual(result[14:len(result)], [
+        assert result[14:len(result)] == [
         "db > Tree:",
         "- internal (size 1)",
         "  - leaf (size 7)",
@@ -182,8 +182,6 @@ class TestDatabase(unittest.TestCase):
         "    - 13",
         "    - 14",
         "db > Need to implement searching an internal node",
-        ])
+        ""
+        ]
         os.remove("test.db")
-
-if __name__ == '__main__':
-    unittest.main()
