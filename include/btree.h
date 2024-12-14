@@ -3,6 +3,8 @@
 
 #include "table.h"
 #include "cursor.h"
+#include <stdint.h>
+
 
 // Node Header Layout
 #define NODE_TYPE_SIZE sizeof(uint8_t)
@@ -38,9 +40,9 @@ void *leaf_node_cell(void *node, uint32_t cell_num);
 uint32_t *leaf_node_key(void *node, uint32_t cell_num);
 void *leaf_node_value(void *node, uint32_t cell_num);
 void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value);
-Cursor *table_find(Table *table, uint32_t key);
-Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key);
-NodeType get_node_type(void *node);
 void set_node_type(void *node, NodeType type);
+NodeType get_node_type(void* node);
+Cursor* leaf_node_find(Table* table, uint32_t page_num, uint32_t key);
+Cursor* table_find(Table* table, uint32_t key);
 
 #endif

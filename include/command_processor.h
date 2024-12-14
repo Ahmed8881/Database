@@ -27,19 +27,21 @@ typedef enum
   EXECUTE_DUPLICATE_KEY
 } ExecuteResult;
 
+typedef struct
+{
+  StatementType type;
+  Row row_to_insert;
+} Statement;
 typedef enum
 {
   STATEMENT_INSERT,
   STATEMENT_SELECT
 } StatementType;
 
-typedef struct
-{
-  StatementType type;
-  Row row_to_insert;
-} Statement;
+
 void print_constants();
 void print_leaf_node(void *node);
+void print_execute_result(ExecuteResult result);
 MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table);
 PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);

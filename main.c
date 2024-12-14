@@ -52,20 +52,9 @@ int main(int argc, char *argv[])
                input_buf->buffer);
         continue;
       }
-      switch (execute_statement(&statement, table))
-      {
-      case EXECUTE_SUCCESS:
-        printf("Executed.\n");
-        break;
-      case EXECUTE_DUPLICATE_KEY:
-        printf("Error: Duplicate key.\n");
-        break;
-      case EXECUTE_TABLE_FULL:
-        printf("Error: Table full.\n");
-        break;
-      case EXECUTE_UNRECOGNIZED_STATEMENT:
-        printf("Unrecognized statement at '%s'.\n", input_buf->buffer);
-      }
+        ExecuteResult result = execute_statement(&statement, table);
+        print_execute_result(result);
+     
     }
   }
 }

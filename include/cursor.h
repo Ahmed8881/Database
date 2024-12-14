@@ -18,6 +18,7 @@ typedef struct
 } Cursor;
 
 Cursor *table_start(Table *table);
+Cursor* table_find(Table* table, uint32_t key);
 // remove table_end
 // instead we use method that searches for the given key defined in btree.h
 void *cursor_value(Cursor *cursor);
