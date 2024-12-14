@@ -11,7 +11,7 @@
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 255
 
-#pragma pack(push, 1) // due alignment issue or an additional padding in the structure happen due to compiler-specific alignment rules.
+#pragma pack(push, 1) // due to alignment issues or additional padding in the structure caused by compiler-specific alignment rules.
 // basically allows you to specify the alignment boundary for the members of a structure, which can help in reducing the size of the structure by eliminating padding bytes
 typedef struct
 {
