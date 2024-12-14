@@ -7,7 +7,10 @@ class TestDatabase:
     def run_script(self, commands, program="./bin/db-project"):
         process = subprocess.Popen([program, "test.db"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         for command in commands:
-            process.stdin.write(command + "\n")
+            try:
+                process.stdin.write(command + "\n")
+            except BrokenPipeError:
+                break
         process.stdin.close()
         raw_output = process.stdout.read()
         process.stdout.close()
@@ -32,7 +35,8 @@ class TestDatabase:
         script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 1402)]
         script.append(".exit")
         result = self.run_script(script)
-        assert result[-2] == 'db > Error: Table full.'
+        # assert result[-2] == 'db > Executed.'
+        assert result[-2] == 'db > Need to implement updating parent after split'
         os.remove("test.db")
 
     def test_allows_inserting_strings_that_are_the_maximum_length(self):
@@ -181,7 +185,7 @@ class TestDatabase:
         "    - 12",
         "    - 13",
         "    - 14",
-        "db > Need to implement searching an internal node",
-        ""
+        "db > Executed.",
+        "db > "
         ]
         os.remove("test.db")
