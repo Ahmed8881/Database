@@ -1,147 +1,298 @@
 # Database Project
 
 ## Overview
-This project implements a SQLite-like database in **C**, designed to run from the command line (CMD). It provides a lightweight, self-contained solution for executing basic SQL commands to manage data.
+
+The **Database Project** is a lightweight, command-line-based database engine implemented in **C**. Inspired by SQLite, it offers fundamental functionalities for managing and querying data using a B-Tree data structure. This project serves as an educational tool to understand the core principles behind database systems, including data storage, indexing, and query processing.
 
 ---
 
 ## Features
-- **Insert Records:** Add data to the database.
-- **Select Records:** Query and retrieve data from the database.
-- **SQL Command Handling:** Execute basic SQL commands like `INSERT` and `SELECT`.
+
+- **Insert Records:** Add new entries to the database.
+- **Select Records:** Retrieve and display stored data.
+- **B-Tree Indexing:** Efficient data organization and retrieval using B-Trees.
+- **Command-Line Interface:** Interactive shell for executing SQL-like commands.
+- **Meta-Commands:** Special commands prefixed with `.` for additional functionalities like viewing the B-Tree structure and application constants.
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-Before you begin, ensure you have the following tools installed on your system:
-- **GCC (GNU Compiler Collection):** For compiling the source code.
-- **Python 3:** Required for running the test scripts.
 
----
+Ensure you have the following tools installed on your system:
+
+- **GCC (GNU Compiler Collection):** For compiling the source code.
+- **Make:** For build automation.
+- **Python 3:** Required for running the test scripts.
 
 ### Installation
 
-1. **Clone the repository:**
+1. **Clone the Repository:**
+
    ```sh
    git clone https://github.com/Ahmed8881/Database.git
    cd Database
    ```
 
-2. **Compile the source code:**
+2. **Build the Project:**
+
+   Use the provided `Makefile` to compile the source code.
+
    ```sh
-   gcc -o database database.c
+   make
    ```
 
-3. **Run the application:**
+   - This command compiles the C source files and generates the executable at `bin/db-project`.
+
+3. **Clean Build Artifacts (Optional):**
+
+   To remove compiled objects and binaries, run:
+
    ```sh
-   ./database
+   make clean
+   ```
+
+4. **Run the Application:**
+
+   Execute the compiled binary, specifying a database file. If the file does not exist, it will be created.
+
+   ```sh
+   ./bin/db-project <database_file>
+   ```
+
+   _Example:_
+
+   ```sh
+   ./bin/db-project test.db
    ```
 
 ---
 
 ## Usage
 
+Upon running the application, you'll enter an interactive shell where you can execute SQL-like commands and meta-commands.
+
 ### Supported SQL Commands
+
 The database currently supports a subset of SQL commands:
+
 - **Insert Data:**
+
   ```sql
-  INSERT INTO table_name (column1, column2) VALUES (value1, value2);
+  insert <id> <username> <email>
   ```
+
+  - **`<id>`:** A positive integer representing the user's ID.
+  - **`<username>`:** A string up to 32 characters.
+  - **`<email>`:** A string up to 255 characters.
+
+  _Example:_
+
+  ```sql
+  insert 1 alice alice@example.com
+  ```
+
 - **Select Data:**
+
   ```sql
-  SELECT column1, column2 FROM table_name WHERE condition;
+  select
   ```
 
-### Example Usage
-1. **Start the application:**
-   ```sh
-   ./database
-   ```
+  - Retrieves and displays all records in the database.
 
-2. **Insert a record:**
-   ```sql
-   INSERT INTO users (id, name) VALUES (1, 'Alice');
-   ```
+  _Example:_
 
-3. **Select records:**
-   ```sql
-   SELECT id, name FROM users;
-   ```
+  ```sql
+  select
+  ```
+
+### Supported Meta-Commands
+
+Meta-commands provide additional functionalities and are prefixed with a dot (`.`).
+
+- **Exit Application:**
+
+  ```sh
+  .exit
+  ```
+
+  - Safely closes the database and exits the application.
+
+- **View B-Tree Structure:**
+
+  ```sh
+  .btree
+  ```
+
+  - Displays the current structure of the B-Tree, showing internal and leaf nodes with their respective keys.
+
+- **View Application Constants:**
+
+  ```sh
+  .constants
+  ```
+
+  - Prints out various constants used within the application, such as sizes and offsets related to node structures.
+
+_Note:_ Entering an unrecognized meta-command will result in an error message.
+
+### Example Session
+
+```sh
+db > insert 1 alice alice@example.com
+Executed.
+db > insert 2 bob bob@example.com
+Executed.
+db > select
+(1, alice, alice@example.com)
+(2, bob, bob@example.com)
+Executed.
+db > .btree
+Tree:
+- internal (size 1)
+  - leaf (size 1)
+    - 1
+  - key 1
+  - leaf (size 1)
+    - 2
+- key 2
+db > .constants
+ROW_SIZE: 291
+COMMON_NODE_HEADER_SIZE: 6
+LEAF_NODE_HEADER_SIZE: 14
+LEAF_NODE_CELL_SIZE: 292
+LEAF_NODE_SPACE_FOR_CELLS: 4082
+LEAF_NODE_MAX_CELLS: 13
+Executed.
+db > .exit
+```
 
 ---
 
 ## Project Structure
+
 The project files are organized as follows:
+
 ```
 Database/
-├── __pycache__/          # Compiled Python files
-├── include/              # Header files for the C source code
+├── include/                     # Header files for the C source code
+│   ├── btree.h
 │   ├── command_processor.h
+│   ├── cursor.h
 │   ├── input_handling.h
+│   ├── pager.h
 │   └── table.h
-├── src/                  # C source files
+├── src/                         # C source files
+│   ├── btree.c
 │   ├── command_processor.c
 │   ├── input_handling.c
 │   └── table.c
-├── main.c                # Main entry point for the C program
-├── Makefile              # Build automation script
-├── Readme.md             # Project documentation
-├── tests.py              # Python script for automated testing
-└── .gitignore            # Git ignore file
-
+├── main.c                       # Main entry point for the C program
+├── Makefile                     # Build automation script
+├── Readme.md                    # Project documentation
+├── test_db.py                   # Python script for automated testing
+├── .gitignore                   # Git ignore file
+└── pyrightconfig.json           # Pyright configuration for type checking
 ```
 
 ---
 
 ## Testing
 
-1. **Run the test script:**
-   Make sure Python 3 is installed, then run:
+Automated tests are provided to verify the functionality of `INSERT` and `SELECT` commands, as well as the integrity of the B-Tree structure.
+
+### Running the Tests
+
+1. **Ensure Python 3 is Installed:**
+
+   Verify that Python 3 is available on your system.
+
    ```sh
-   python3 test_script.py
+   python3 --version
    ```
 
-2. **Expected output:**
-   - The script verifies the functionality of `INSERT` and `SELECT` commands.
-   - Detailed test results will be displayed in the terminal.
+2. **Install pytest:**
+
+   Install the `pytest` package using `pip`.
+
+   ```sh
+   pip install pytest
+   ```
+
+   For Debian-based distributions, if you encounter issues with `pip`, you can install `pytest` using the package manager:
+
+   ```sh
+   sudo apt install python3-pytest
+   ```
+
+3. **Execute the Test Script:**
+
+   Run the provided Python test script.
+
+   ```sh
+   make test
+   ```
+
+4. **Review Test Results:**
+
+   The tests will output detailed results, indicating the success or failure of each test case.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! To get started:
+Contributions are welcome! Follow these steps to contribute to the project:
 
-1. Fork the repository.
-2. Create a feature branch:
+1. **Fork the Repository:**
+
+   Click the "Fork" button on the repository page to create your own copy.
+
+2. **Create a Feature Branch:**
+
+   Navigate to your forked repository and create a new branch for your feature.
+
    ```sh
    git checkout -b feature-name
    ```
-3. Commit your changes:
+
+3. **Commit Your Changes:**
+
+   Make your changes and commit them with a descriptive message.
+
    ```sh
    git commit -m "Add a new feature"
    ```
-4. Push to your branch:
+
+4. **Push to Your Branch:**
+
    ```sh
    git push origin feature-name
    ```
-5. Open a Pull Request.
+
+5. **Open a Pull Request:**
+
+   Navigate to the original repository and open a pull request from your feature branch.
+
+6. **Code Review:**
+
+   Collaborate with maintainers to review and refine your contribution.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## Contact
 
-If you have any questions or suggestions, feel free to reach out:
-- **GitHub:** [Ahmed8881](https://github.com/Ahmed8881)
-- **GitHub:** [hamidriaz1998](https://github.com/hamidriaz1998)
-- **GitHub:** [abdulrehmansafdar](https://github.com/abdulrehmansafdar)
+For any questions, suggestions, or feedback, feel free to reach out to the project maintainers:
+
+- **Ahmed8881:** [GitHub Profile](https://github.com/Ahmed8881)
+- **hamidriaz1998:** [GitHub Profile](https://github.com/hamidriaz1998)
+- **abdulrehmansafdar:** [GitHub Profile](https://github.com/abdulrehmansafdar)
 
 ---
 
