@@ -259,10 +259,11 @@ Cursor* internal_node_find(Table* table, uint32_t page_num, uint32_t key) {
       return internal_node_find(table, child_num, key);
   }
 }
-void initialize_internal_node(void *node) {
+void initialize_internal_node(void* node) {
   set_node_type(node, NODE_INTERNAL);
   set_node_root(node, false);
   *internal_node_num_keys(node) = 0;
+  *internal_node_right_child(node) = INVALID_PAGE_NUM;
 }
 /*** Internal Node end ***/
 
