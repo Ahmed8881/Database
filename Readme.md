@@ -230,7 +230,6 @@ db > .exit
 
 ## Project Structure
 
-
 The project files are organized as follows:
 
 ```
@@ -241,11 +240,15 @@ Database/
 │   ├── cursor.h
 │   ├── input_handling.h
 │   ├── pager.h
+│   ├── queue.h
+│   ├── stack.h
 │   └── table.h
 ├── src/                         # C source files
 │   ├── btree.c
 │   ├── command_processor.c
 │   ├── input_handling.c
+│   ├── queue.c
+│   ├── stack.c
 │   └── table.c
 ├── main.c                       # Main entry point for the C program
 ├── Makefile                     # Build automation script
@@ -336,12 +339,6 @@ Contributions are welcome! Follow these steps to contribute to the project:
 6. **Code Review:**
 
    Collaborate with maintainers to review and refine your contribution.
-
----
-
-## License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
