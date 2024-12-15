@@ -10,6 +10,9 @@ The **Database Project** is a lightweight, command-line-based database engine im
 
 - **Insert Records:** Add new entries to the database.
 - **Select Records:** Retrieve and display stored data.
+- **Select Records by ID:** Retrieve and display a specific record by its ID.
+- **Update Records:** Modify existing entries in the database.
+- **Delete Records:** Remove entries from the database.
 - **B-Tree Indexing:** Efficient data organization and retrieval using B-Trees.
 - **Command-Line Interface:** Interactive shell for executing SQL-like commands.
 - **Meta-Commands:** Special commands prefixed with `.` for additional functionalities like viewing the B-Tree structure and application constants.
@@ -107,6 +110,48 @@ The database currently supports a subset of SQL commands:
   select
   ```
 
+- **Select Data by ID:**
+
+  ```sql
+  select where id = <id>
+  ```
+
+  - Retrieves and displays the record with the specified ID.
+
+  _Example:_
+
+  ```sql
+  select where id = 1
+  ```
+
+- **Update Data:**
+
+  ```sql
+  update <id> <field> <value>
+  ```
+
+  - Updates the specified field of the record with the given ID.
+
+  _Example:_
+
+  ```sql
+  update 1 username alice_new
+  ```
+
+- **Delete Data:**
+
+  ```sql
+  delete where id = <id>
+  ```
+
+  - Deletes the record with the specified ID.
+
+  _Example:_
+
+  ```sql
+  delete where id = 1
+  ```
+
 ### Supported Meta-Commands
 
 Meta-commands provide additional functionalities and are prefixed with a dot (`.`).
@@ -146,6 +191,19 @@ db > insert 2 bob bob@example.com
 Executed.
 db > select
 (1, alice, alice@example.com)
+(2, bob, bob@example.com)
+Executed.
+db > select where id = 1
+(1, alice, alice@example.com)
+Executed.
+db > update 1 username alice_new
+Executed.
+db > select where id = 1
+(1, alice_new, alice@example.com)
+Executed.
+db > delete where id = 1
+Executed.
+db > select
 (2, bob, bob@example.com)
 Executed.
 db > .btree
@@ -200,7 +258,7 @@ Database/
 
 ## Testing
 
-Automated tests are provided to verify the functionality of `INSERT` and `SELECT` commands, as well as the integrity of the B-Tree structure.
+Automated tests are provided to verify the functionality of `INSERT`, `SELECT`, `SELECT BY ID`, `UPDATE`, and `DELETE` commands, as well as the integrity of the B-Tree structure.
 
 ### Running the Tests
 
