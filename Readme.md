@@ -172,6 +172,7 @@ db > .exit
 
 ## Project Structure
 
+
 The project files are organized as follows:
 
 ```
