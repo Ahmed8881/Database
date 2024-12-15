@@ -1,6 +1,9 @@
 #include "../include/btree.h"
+#include "../include/stack.h"
+
 #include <stdint.h>
 #include <string.h>
+
 
 /*** Leaf Node start ***/
 uint32_t *leaf_node_num_cells(void *node) {
@@ -293,36 +296,90 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
   *node_parent(right_child) = table->root_page_num;
 }
 
-void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
-  void* node = get_page(pager, page_num);
-  uint32_t num_keys, child;
-  switch (get_node_type(node)) {
-    case NODE_LEAF:
-      num_keys = *leaf_node_num_cells(node);
-      indent(indentation_level);
-      printf("- leaf (size %d)\n", num_keys);
-      for (uint32_t i = 0; i < num_keys; i++) {
-        indent(indentation_level + 1);
-        printf("- %d\n", *leaf_node_key(node, i));
-      }
-      break;
-    case NODE_INTERNAL:
-      num_keys = *internal_node_num_keys(node);
-      indent(indentation_level);
-      printf("- internal (size %d)\n", num_keys);
-      if (num_keys > 0) {
-        for (uint32_t i = 0; i < num_keys; i++) {
-          child = *internal_node_child(node, i);
-          print_tree(pager, child, indentation_level + 1);
+// void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
+//   void* node = get_page(pager, page_num);
+//   uint32_t num_keys, child;
+//   switch (get_node_type(node)) {
+//     case NODE_LEAF:
+//       num_keys = *leaf_node_num_cells(node);
+//       indent(indentation_level);
+//       printf("- leaf (size %d)\n", num_keys);
+//       for (uint32_t i = 0; i < num_keys; i++) {
+//         indent(indentation_level + 1);
+//         printf("- %d\n", *leaf_node_key(node, i));
+//       }
+//       break;
+//     case NODE_INTERNAL:
+//       num_keys = *internal_node_num_keys(node);
+//       indent(indentation_level);
+//       printf("- internal (size %d)\n", num_keys);
+//       if (num_keys > 0) {
+//         for (uint32_t i = 0; i < num_keys; i++) {
+//           child = *internal_node_child(node, i);
+//           print_tree(pager, child, indentation_level + 1);
 
-          indent(indentation_level + 1);
-          printf("- key %d\n", *internal_node_key(node, i));
+//           indent(indentation_level + 1);
+//           printf("- key %d\n", *internal_node_key(node, i));
+//         }
+//         child = *internal_node_right_child(node);
+//         print_tree(pager, child, indentation_level + 1);
+//       }
+//       break;
+//   }
+// }
+
+// Add this non-recursive print function using stack
+void print_tree_iterative(Pager* pager, uint32_t root_page_num) {
+    Stack stack;
+    stack_init(&stack);
+    
+    void* root = get_page(pager, root_page_num);
+    stack_push(&stack, root, root_page_num, 0);
+    
+    while (!stack_is_empty(&stack)) {
+        StackNode* current = stack_pop(&stack);
+        void* node = current->data;
+        uint32_t level = current->level;
+        
+        switch (get_node_type(node)) {
+            case NODE_LEAF:
+                uint32_t num_cells = *leaf_node_num_cells(node);
+                indent(level);
+                printf("- leaf (size %d)\n", num_cells);
+                for (uint32_t i = 0; i < num_cells; i++) {
+                    indent(level + 1);
+                    printf("- %d\n", *leaf_node_key(node, i));
+                }
+                break;
+                
+            case NODE_INTERNAL:
+                uint32_t num_keys = *internal_node_num_keys(node);
+                indent(level);
+                printf("- internal (size %d)\n", num_keys);
+                
+                // Push right child first
+                uint32_t right_child = *internal_node_right_child(node);
+                if (right_child != INVALID_PAGE_NUM) {
+                    void* right_node = get_page(pager, right_child);
+                    stack_push(&stack, right_node, right_child, level + 1);
+                }
+                
+                // Push other children from right to left
+                for (int i = num_keys - 1; i >= 0; i--) {
+                    uint32_t child_page_num = *internal_node_child(node, i);
+                    void* child_node = get_page(pager, child_page_num);
+                    stack_push(&stack, child_node, child_page_num, level + 1);
+                }
+                break;
         }
-        child = *internal_node_right_child(node);
-        print_tree(pager, child, indentation_level + 1);
-      }
-      break;
-  }
+        free(current);
+    }
+    stack_destroy(&stack);
+}
+
+// Modify the original print_tree function to use iterative version
+void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
+    print_tree_iterative(pager, page_num);
 }
 
 void update_internal_node_key(void* node, uint32_t old_key, uint32_t new_key) {
