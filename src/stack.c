@@ -1,50 +1,53 @@
-#include <stdlib.h>
-#include <string.h>
 #include "../include/stack.h"
+#include <stdlib.h>
 
-// create a new stack
-struct Stack *createStack()
+void stack_init(Stack *stack)
 {
-   struct Stack *stack = (struct Stack *)malloc(sizeof(struct Stack));
    stack->top = NULL;
-   return stack;
+   stack->size = 0;
 }
 
-// push a new command to the stack
-void push(struct Stack *stack, char *command)
+bool stack_push(Stack *stack, void *data, uint32_t page_num, uint32_t level)
 {
-   struct StackNode *newNode = (struct StackNode *)malloc(sizeof(struct StackNode));
-   newNode->command = command;
-   newNode->next = stack->top;
-   stack->top = newNode;
+   StackNode *node = (StackNode *)malloc(sizeof(StackNode));
+   if (!node)
+      return false;
+
+   node->data = data;
+   node->page_num = page_num;
+   node->level = level;
+   node->next = stack->top;
+   stack->top = node;
+   stack->size++;
+   return true;
 }
 
-// pop the top command from the stack
-char *pop(struct Stack *stack)
+StackNode *stack_pop(Stack *stack)
 {
-   if (isEmpty(stack))
-   {
+   if (stack_is_empty(stack))
       return NULL;
-   }
-   struct StackNode *temp = stack->top;
+
+   StackNode *node = stack->top;
    stack->top = stack->top->next;
-   char *command = temp->command;
-   free(temp);
-   return command;
+   stack->size--;
+   return node;
 }
 
-// get the top command from the stack
-char *peek(struct Stack *stack)
+StackNode *stack_peek(Stack *stack)
 {
-   if (isEmpty(stack))
-   {
-      return NULL;
-   }
-   return stack->top->command;
+   return stack->top;
 }
 
-// check if the stack is empty
-int isEmpty(struct Stack *stack)
+bool stack_is_empty(Stack *stack)
 {
    return stack->top == NULL;
+}
+
+void stack_destroy(Stack *stack)
+{
+   while (!stack_is_empty(stack))
+   {
+      StackNode *node = stack_pop(stack);
+      free(node);
+   }
 }
