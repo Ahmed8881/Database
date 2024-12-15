@@ -39,7 +39,7 @@ class TestDatabase:
         script = [f"insert {i} user{i} person{i}@example.com" for i in range(1, 1402)]
         script.append(".exit")
         result = self.run_script(script)
-        assert result[-2] == 'db > Need to implement updating parent after split'
+        assert result[-2] == 'db > Tried to fetch page out of bounds. 101 > 100'
         os.remove("test.db")
 
     def test_allows_inserting_strings_that_are_the_maximum_length(self):
@@ -211,3 +211,22 @@ class TestDatabase:
             assert result == expected_output, f"Expected output does not match actual output.\nExpected: {expected_output}\nActual: {result}"
 
             os.remove("test.db")
+    def test_select_where_id(self):
+        script =[f"insert {i} user{i} person{i}@gmail.com" for i in range(1, 6)]
+        script.append("select where id = 3")
+        script.append(".exit")
+        result = self.run_script(script)
+        assert result == [
+            "db > Executed.",
+            "db > Executed.",
+            "db > Executed.",
+            "db > Executed.",
+            "db > Executed.",
+            "db > (3, user3, person3@example.com)",
+            "Executed.",
+            "db > ",
+        ]
+        
+        os.remove("test.db")
+
+

@@ -73,6 +73,7 @@ Cursor *table_find(Table *table, uint32_t key)
 {
   uint32_t root_page_num = table->root_page_num;
   void *root_node = get_page(table->pager, root_page_num);
+
   if (get_node_type(root_node) == NODE_LEAF)
   {
     return leaf_node_find(table, root_page_num, key);
@@ -86,9 +87,11 @@ Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key)
 {
   void *node = get_page(table->pager, page_num);
   uint32_t num_cells = *leaf_node_num_cells(node);
+
   Cursor *cursor = malloc(sizeof(Cursor));
   cursor->table = table;
   cursor->page_num = page_num;
+
   // Binary search
   uint32_t min_index = 0;
   uint32_t one_past_max_index = num_cells;
@@ -99,6 +102,7 @@ Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key)
     if (key == key_at_index)
     {
       cursor->cell_num = index;
+      cursor->end_of_table = false;
       return cursor;
     }
     if (key < key_at_index)
@@ -110,7 +114,9 @@ Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key)
       min_index = index + 1;
     }
   }
+
   cursor->cell_num = min_index;
+  cursor->end_of_table = (min_index == num_cells);
   return cursor;
 }
 NodeType get_node_type(void *node)
@@ -123,7 +129,6 @@ void set_node_type(void *node, NodeType type)
   uint8_t value = type;
   *((uint8_t *)node + NODE_TYPE_OFFSET) = value;
 }
-
 void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value)
 {
   void *old_node = get_page(cursor->table->pager, cursor->page_num);
@@ -176,7 +181,8 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value)
 
   if (is_node_root(old_node))
   {
-    return create_root_node(cursor->table, new_page_num);
+    create_new_root(cursor->table, new_page_num);
+    return;
   }
   else
   {
@@ -354,7 +360,6 @@ void create_new_root(Table *table, uint32_t right_child_page_num)
   *node_parent(right_child) = table->root_page_num;
 }
 
-// Add this non-recursive print function using stack
 void print_tree_iterative(Pager *pager, uint32_t root_page_num)
 {
   Stack stack;
@@ -372,6 +377,7 @@ void print_tree_iterative(Pager *pager, uint32_t root_page_num)
     switch (get_node_type(node))
     {
     case NODE_LEAF:
+    {
       uint32_t num_cells = *leaf_node_num_cells(node);
       indent(level);
       printf("- leaf (size %d)\n", num_cells);
@@ -380,9 +386,11 @@ void print_tree_iterative(Pager *pager, uint32_t root_page_num)
         indent(level + 1);
         printf("- %d\n", *leaf_node_key(node, i));
       }
-      break;
+    }
+    break;
 
     case NODE_INTERNAL:
+    {
       uint32_t num_keys = *internal_node_num_keys(node);
       indent(level);
       printf("- internal (size %d)\n", num_keys);
@@ -402,7 +410,15 @@ void print_tree_iterative(Pager *pager, uint32_t root_page_num)
         void *child_node = get_page(pager, child_page_num);
         stack_push(&stack, child_node, child_page_num, level + 1);
       }
-      break;
+
+      // Print keys
+      for (uint32_t i = 0; i < num_keys; i++)
+      {
+        indent(level + 1);
+        printf("- key %d\n", *internal_node_key(node, i));
+      }
+    }
+    break;
     }
     free(current);
   }
@@ -414,7 +430,6 @@ void print_tree(Pager *pager, uint32_t page_num, uint32_t indentation_level)
 {
   print_tree_iterative(pager, page_num);
 }
-
 void update_internal_node_key(void *node, uint32_t old_key, uint32_t new_key)
 {
   uint32_t old_child_index = internal_node_find_child(node, old_key);
@@ -520,7 +535,7 @@ Cursor *internal_node_find(Table *table, uint32_t page_num, uint32_t key)
   switch (get_node_type(child))
   {
   case NODE_LEAF:
-    return leaf_node_find(table, page_num, key);
+    return leaf_node_find(table, child_num, key);
   case NODE_INTERNAL:
     return internal_node_find(table, child_num, key);
   }
@@ -575,4 +590,6 @@ void create_root_node(Table *table, uint32_t right_child_page_num)
   uint32_t left_child_max_key = get_node_max_key(table->pager, left_child);
   *(internal_node_key(root, 0)) = left_child_max_key;
   *(internal_node_right_child(root)) = right_child_page_num;
+  *(node_parent(left_child)) = table->root_page_num;
+  *(node_parent(right_child)) = table->root_page_num;
 }

@@ -93,6 +93,54 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
     statement->type = STATEMENT_SELECT;
     return PREPARE_SUCCESS;
   }
+  if (strncmp(buf->buffer, "select where id = ", 18) == 0)
+  {
+    statement->type = STATEMENT_SELECT_BY_ID;
+    statement->id_to_select = atoi(buf->buffer + 18);
+    return PREPARE_SUCCESS;
+  }
+  if (strncmp(buf->buffer, "update ", 7) == 0)
+  {
+    statement->type = STATEMENT_UPDATE;
+    char *id_string = strtok(buf->buffer + 7, " ");
+    statement->id_to_update = atoi(id_string);
+    char *field = strtok(NULL, " ");
+    char *value = strtok(NULL, " ");
+    if (field == NULL || value == NULL)
+    {
+      return PREPARE_SYNTAX_ERROR;
+    }
+    if (strcmp(field, "username") == 0)
+    {
+      if (strlen(value) > COLUMN_USERNAME_SIZE)
+      {
+        return PREPARE_STRING_TOO_LONG;
+      }
+      strcpy(statement->row_to_insert.username, value);
+      strcpy(statement->row_to_insert.email, "");
+    }
+    else if (strcmp(field, "email") == 0)
+    {
+      if (strlen(value) > COLUMN_EMAIL_SIZE)
+      {
+        return PREPARE_STRING_TOO_LONG;
+      }
+      strcpy(statement->row_to_insert.email, value);
+      strcpy(statement->row_to_insert.username, "");
+    }
+    else
+    {
+      return PREPARE_SYNTAX_ERROR;
+    }
+
+    return PREPARE_SUCCESS;
+  }
+  if (strncmp(buf->buffer, "delete where id = ", 18) == 0)
+  {
+    statement->type = STATEMENT_DELETE;
+    statement->id_to_delete = atoi(buf->buffer + 18);
+    return PREPARE_SUCCESS;
+  }
 
   return PREPARE_UNRECOGNIZED_STATEMENT;
 }
@@ -122,6 +170,32 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
   return EXECUTE_SUCCESS;
 }
 
+ExecuteResult execute_update(Statement *statement, Table *table)
+{
+  Cursor *cursor = table_find(table, statement->id_to_update);
+  if (cursor->end_of_table)
+  {
+    printf("Record not found.\n");
+    free(cursor);
+    return EXECUTE_SUCCESS;
+  }
+  Row row;
+  deserialize_row(cursor_value(cursor), &row);
+
+  if (strlen(statement->row_to_insert.username) > 0)
+  {
+    strcpy(row.username, statement->row_to_insert.username);
+  }
+  if (strlen(statement->row_to_insert.email) > 0)
+  {
+    strcpy(row.email, statement->row_to_insert.email);
+  }
+
+  serialize_row(&row, cursor_value(cursor));
+  free(cursor);
+  return EXECUTE_SUCCESS;
+}
+
 ExecuteResult execute_select(Statement *statement, Table *table)
 {
   Cursor *cursor = table_start(table);
@@ -141,6 +215,42 @@ ExecuteResult execute_select(Statement *statement, Table *table)
   return EXECUTE_SUCCESS;
 }
 
+ExecuteResult execute_select_by_id(Statement *statement, Table *table)
+{
+  Cursor *cursor = table_find(table, statement->id_to_select);
+  Row row;
+  if (cursor->end_of_table)
+  {
+    printf("Record not found.\n");
+    free(cursor);
+    return EXECUTE_SUCCESS;
+  }
+  deserialize_row(cursor_value(cursor), &row);
+  print_row(&row);
+  free(cursor);
+  return EXECUTE_SUCCESS;
+}
+
+ExecuteResult execute_delete(Statement *statement, Table *table)
+{
+  Cursor *cursor = table_find(table, statement->id_to_delete);
+  if (cursor->end_of_table)
+  {
+    printf("Record not found.\n");
+    free(cursor);
+    return EXECUTE_SUCCESS;
+  }
+  void *node = get_page(table->pager, cursor->page_num);
+  uint32_t num_cells = *leaf_node_num_cells(node);
+  for (uint32_t i = cursor->cell_num; i < num_cells - 1; i++)
+  {
+    memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i + 1), LEAF_NODE_CELL_SIZE);
+  }
+  (*leaf_node_num_cells(node))--;
+  free(cursor);
+  return EXECUTE_SUCCESS;
+}
+
 ExecuteResult execute_statement(Statement *statement, Table *table)
 {
   switch (statement->type)
@@ -149,6 +259,12 @@ ExecuteResult execute_statement(Statement *statement, Table *table)
     return execute_insert(statement, table);
   case (STATEMENT_SELECT):
     return execute_select(statement, table);
+  case (STATEMENT_SELECT_BY_ID):
+    return execute_select_by_id(statement, table);
+  case (STATEMENT_UPDATE):
+    return execute_update(statement, table);
+  case (STATEMENT_DELETE):
+    return execute_delete(statement, table);
   }
   return EXECUTE_UNRECOGNIZED_STATEMENT;
 }
