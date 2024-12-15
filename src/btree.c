@@ -155,15 +155,29 @@ void internal_node_insert(Table* table, uint32_t parent_page_num, uint32_t child
   uint32_t index = internal_node_find_child(parent, child_max_key);
 
   uint32_t original_num_keys = *internal_node_num_keys(parent);
-  *internal_node_num_keys(parent) = original_num_keys + 1;
 
   if (original_num_keys >= INTERNAL_NODE_MAX_CELLS) {
-    printf("Need to implement splitting internal node\n");
-    exit(EXIT_FAILURE);
+    internal_node_split_and_insert(table, parent_page_num, child_page_num);
+    return;
   }
 
   uint32_t right_child_page_num = *internal_node_right_child(parent);
+  /*
+  An internal node with a right child of INVALID_PAGE_NUM is empty
+  */
+  if (right_child_page_num == INVALID_PAGE_NUM) {
+    *internal_node_right_child(parent) = child_page_num;
+    return;
+  }
+
   void* right_child = get_page(table->pager, right_child_page_num);
+  /*
+  If we are already at the max number of cells for a node, we cannot increment
+  before splitting. Incrementing without inserting a new key/child pair
+  and immediately calling internal_node_split_and_insert has the effect
+  of creating a new key at (max_cells + 1) with an uninitialized value
+  */
+  *internal_node_num_keys(parent) = original_num_keys + 1;
 
   if (child_max_key > get_node_max_key(right_child)) {
     /* Replace right child */
