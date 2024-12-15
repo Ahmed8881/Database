@@ -57,7 +57,6 @@
 #define INTERNAL_NODE_CHILD_SIZE sizeof(uint32_t)
 #define INTERNAL_NODE_CELL_SIZE                                                \
   (INTERNAL_NODE_CHILD_SIZE + INTERNAL_NODE_KEY_SIZE)
-const uint32_t INTERNAL_NODE_MAX_CELLS = 3; /* Keep this small for testing */
 
 // enums
 typedef enum { NODE_INTERNAL, NODE_LEAF } NodeType;
