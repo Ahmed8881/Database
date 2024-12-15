@@ -228,5 +228,58 @@ class TestDatabase:
         ]
         
         os.remove("test.db")
+    def test_update_username_where_id(self):
+        if os.path.exists("test.db"):
+            os.remove("test.db")
+        result = self.run_script([
+            "insert 1 user1 user1@example.com",
+            "update 1 username new_user1",
+            "select where id = 1",
+            ".exit",
+        ])
+        assert result == [
+            "db > Executed.",
+            "db > Executed.",
+            "db > (1, new_user1, user1@example.com)",
+            "Executed.",
+            "db > ",
+        ]
+        os.remove("test.db")
+
+    def test_update_email_where_id(self):
+        if os.path.exists("test.db"):
+            os.remove("test.db")
+        result = self.run_script([
+            "insert 1 user1 user1@example.com",
+            "update 1 email new_user1@example.com",
+            "select where id = 1",
+            ".exit",
+        ])
+        assert result == [
+            "db > Executed.",
+            "db > Executed.",
+            "db > (1, user1, new_user1@example.com)",
+            "Executed.",
+            "db > ",
+        ]
+        os.remove("test.db")
+
+    def test_delete_where_id(self):
+        if os.path.exists("test.db"):
+            os.remove("test.db")
+        result = self.run_script([
+            "insert 1 user1 user1@example.com",
+            "delete where id = 1",
+            "select where id = 1",
+            ".exit",
+        ])
+        assert result == [
+            "db > Executed.",
+            "db > Executed.",
+            "db > Record not found.",
+            "Executed.",
+            "db > ",
+        ]
+        os.remove("test.db")
 
 
