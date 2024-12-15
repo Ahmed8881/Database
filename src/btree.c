@@ -424,14 +424,12 @@ void initialize_internal_node(void* node) {
 
 uint32_t get_unused_page_num(Pager *pager) { return pager->num_pages; }
 
-uint32_t get_node_max_key(void *node) {
-  switch (get_node_type(node)) {
-  case NODE_INTERNAL:
-    return *internal_node_key(node, *internal_node_num_keys(node) - 1);
-  case NODE_LEAF:
+uint32_t get_node_max_key(Pager* pager, void* node) {
+  if (get_node_type(node) == NODE_LEAF) {
     return *leaf_node_key(node, *leaf_node_num_cells(node) - 1);
   }
-  return 0;
+  void* right_child = get_page(pager, *internal_node_right_child(node));
+  return get_node_max_key(pager, right_child);
 }
 
 bool is_node_root(void *node) {
