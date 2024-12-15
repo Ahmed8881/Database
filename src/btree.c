@@ -6,7 +6,16 @@
 uint32_t *leaf_node_num_cells(void *node) {
   return (uint32_t *)((uint8_t *)node + LEAF_NODE_NUM_CELLS_OFFSET);
 }
-
+/**
+ * @brief This function calculates the factorial of a given number.
+ *
+ * The function takes an integer as input and returns the factorial of that number.
+ * The factorial of a non-negative integer n is the product of all positive integers less than or equal to n.
+ * For example, the factorial of 5 is 5 * 4 * 3 * 2 * 1 = 120.
+ *
+ * @param n The integer for which the factorial is to be calculated. Must be non-negative.
+ * @return The factorial of the input number. If the input number is negative, the function returns -1.
+ */
 void *leaf_node_cell(void *node, uint32_t cell_num) {
   return (uint8_t *)node + LEAF_NODE_HEADER_SIZE +
          cell_num * LEAF_NODE_CELL_SIZE;
