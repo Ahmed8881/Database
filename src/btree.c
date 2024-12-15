@@ -327,8 +327,6 @@ void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
   }
 }
 
-
-
 void update_internal_node_key(void* node, uint32_t old_key, uint32_t new_key) {
   uint32_t old_child_index = internal_node_find_child(node, old_key);
   *internal_node_key(node, old_child_index) = new_key;
