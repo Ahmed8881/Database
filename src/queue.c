@@ -4,7 +4,7 @@
 void queue_init(Queue* queue) {
     queue->front = NULL;
     queue->rear = NULL;
-    queue->size = 0;
+    queue->size = 0;  // number of elements in the queue
 }
 
 bool queue_enqueue(Queue* queue, void* data, uint32_t page_num, uint32_t level) {
