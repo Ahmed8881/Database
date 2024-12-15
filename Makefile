@@ -22,6 +22,6 @@ clean:
 
 test:
 	# -vv for verbose output
-	pytest -vv test_db.py
+	python3 -m pytest -vv test_db.py
 
 .PHONY: all clean

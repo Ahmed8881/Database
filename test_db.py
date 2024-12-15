@@ -171,6 +171,7 @@ class TestDatabase:
         assert result[14:len(result)] == [
         "db > Tree:",
         "- internal (size 1)",
+        "  - key 7",
         "  - leaf (size 7)",
         "    - 1",
         "    - 2",
@@ -179,7 +180,6 @@ class TestDatabase:
         "    - 5",
         "    - 6",
         "    - 7",
-        "  - key 7",
         "  - leaf (size 7)",
         "    - 8",
         "    - 9",
@@ -211,8 +211,9 @@ class TestDatabase:
             assert result == expected_output, f"Expected output does not match actual output.\nExpected: {expected_output}\nActual: {result}"
 
             os.remove("test.db")
+
     def test_select_where_id(self):
-        script =[f"insert {i} user{i} person{i}@gmail.com" for i in range(1, 6)]
+        script =[f"insert {i} user{i} person{i}@example.com" for i in range(1, 6)]
         script.append("select where id = 3")
         script.append(".exit")
         result = self.run_script(script)
