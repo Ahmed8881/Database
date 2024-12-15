@@ -293,16 +293,6 @@ void create_new_root(Table* table, uint32_t right_child_page_num) {
   *node_parent(right_child) = table->root_page_num;
 }
 
-/**
- * @brief This function calculates the factorial of a given number.
- *
- * The function takes an integer as input and returns the factorial of that number.
- * The factorial of a non-negative integer n is the product of all positive integers less than or equal to n.
- * For example, the factorial of 5 is 5 * 4 * 3 * 2 * 1 = 120.
- *
- * @param n The integer for which the factorial is to be calculated. Must be non-negative.
- * @return The factorial of the input number. If the input is 0, the function returns 1.
- */
 void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level) {
   void* node = get_page(pager, page_num);
   uint32_t num_keys, child;
