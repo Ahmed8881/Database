@@ -79,9 +79,65 @@ Table *db_open(const char *file_name)
   return table;
 }
 
+// Function to create all directories in a file path
+static void create_path_for_file(const char* file_path) {
+    char dir_path[512];
+    strncpy(dir_path, file_path, sizeof(dir_path) - 1);
+    dir_path[sizeof(dir_path) - 1] = '\0';
+    
+    // Find the last slash to get directory part
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash == NULL) {
+        // No directory part
+        return;
+    }
+    
+    *last_slash = '\0'; // Truncate at the last slash to get directory part
+    
+    // We'll build the path one component at a time
+    char path_so_far[512] = {0};
+    char *component = dir_path;
+    
+    while (*component) {
+        // Find next path separator
+        char *next_separator = strchr(component, '/');
+        if (next_separator) {
+            *next_separator = '\0'; // Temporarily terminate the string
+        }
+        
+        // Add current component to the path so far
+        if (path_so_far[0] != '\0') {
+            strcat(path_so_far, "/");
+        }
+        strcat(path_so_far, component);
+        
+        // Create this directory if it doesn't exist
+        struct stat st = {0};
+        if (stat(path_so_far, &st) == -1) {
+            #ifdef _WIN32
+            mkdir(path_so_far);
+            #else
+            mkdir(path_so_far, 0755);
+            #endif
+            printf("Created directory: %s\n", path_so_far);
+        }
+        
+        // Move to next component
+        if (next_separator) {
+            *next_separator = '/'; // Restore the path separator
+            component = next_separator + 1;
+        } else {
+            break;
+        }
+    }
+}
+
 // function for openinng the file and initializes the pager object
 Pager *pager_open(const char *file_name)
 {
+  // Create all necessary directories before opening file
+  create_path_for_file(file_name);
+  
   // open the file
   // O_RDWR: open the file for reading and writing
   // O_CREAT: create the file if it does not exist
@@ -92,7 +148,7 @@ Pager *pager_open(const char *file_name)
   // os returns -1 if fails to open file
   if (fd == -1)
   {
-    printf("Unable to open file\n");
+    perror("Unable to open file"); // Print detailed error
     exit(EXIT_FAILURE);
   }
   // taking the file length means from 0 to end fo file
@@ -241,4 +297,318 @@ void cursor_advance(Cursor *cursor)
       cursor->cell_num = 0;
     }
   }
+}
+// Add the following functions at the end of the file
+
+void dynamic_row_init(DynamicRow* row, TableDef* table_def) {
+    // Calculate the total size needed for the row
+    uint32_t size = 0;
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                size += sizeof(float);
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                size += sizeof(uint8_t);
+                break;
+            case COLUMN_TYPE_DATE:
+            case COLUMN_TYPE_TIME:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                size += sizeof(int64_t);
+                break;
+            case COLUMN_TYPE_STRING:
+                size += col->size + 1; // Add 1 for null terminator
+                break;
+            case COLUMN_TYPE_BLOB:
+                size += col->size + sizeof(uint32_t); // Size prefix + data
+                break;
+        }
+    }
+    
+    row->data = malloc(size);
+    row->data_size = size;
+    memset(row->data, 0, size);
+}
+
+// Helper function to calculate column offset
+uint32_t get_column_offset(TableDef* table_def, uint32_t col_idx) {
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < col_idx; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                offset += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                offset += sizeof(float);
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                offset += sizeof(uint8_t);
+                break;
+            case COLUMN_TYPE_DATE:
+            case COLUMN_TYPE_TIME:
+                offset += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                offset += sizeof(int64_t);
+                break;
+            case COLUMN_TYPE_STRING:
+                offset += col->size + 1; // Add 1 for null terminator
+                break;
+            case COLUMN_TYPE_BLOB:
+                offset += col->size + sizeof(uint32_t); // Size prefix + data
+                break;
+        }
+    }
+    return offset;
+}
+
+void dynamic_row_set_int(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_INT) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+}
+
+void dynamic_row_set_float(DynamicRow* row, TableDef* table_def, uint32_t col_idx, float value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_FLOAT) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(float));
+}
+
+void dynamic_row_set_boolean(DynamicRow* row, TableDef* table_def, uint32_t col_idx, bool value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BOOLEAN) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint8_t bool_val = value ? 1 : 0;
+    memcpy((uint8_t*)row->data + offset, &bool_val, sizeof(uint8_t));
+}
+
+void dynamic_row_set_date(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_DATE) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+}
+
+void dynamic_row_set_time(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIME) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+}
+
+void dynamic_row_set_timestamp(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int64_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIMESTAMP) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int64_t));
+}
+
+void dynamic_row_set_string(DynamicRow* row, TableDef* table_def, uint32_t col_idx, const char* value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_STRING) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint32_t str_size = table_def->columns[col_idx].size;
+    strncpy((char*)row->data + offset, value, str_size);
+    ((char*)row->data)[offset + str_size] = '\0';
+}
+
+void dynamic_row_set_blob(DynamicRow* row, TableDef* table_def, uint32_t col_idx, const void* data, uint32_t size) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BLOB) {
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint32_t max_size = table_def->columns[col_idx].size;
+    
+    // First store the actual size being used
+    uint32_t actual_size = size > max_size ? max_size : size;
+    memcpy((uint8_t*)row->data + offset, &actual_size, sizeof(uint32_t));
+    
+    // Then store the blob data
+    memcpy((uint8_t*)row->data + offset + sizeof(uint32_t), data, actual_size);
+}
+
+int32_t dynamic_row_get_int(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_INT) {
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+float dynamic_row_get_float(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_FLOAT) {
+        return 0.0f;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    float value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(float));
+    return value;
+}
+
+bool dynamic_row_get_boolean(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BOOLEAN) {
+        return false;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint8_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(uint8_t));
+    return value != 0;
+}
+
+int32_t dynamic_row_get_date(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_DATE) {
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+int32_t dynamic_row_get_time(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIME) {
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+int64_t dynamic_row_get_timestamp(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIMESTAMP) {
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int64_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int64_t));
+    return value;
+}
+
+char* dynamic_row_get_string(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_STRING) {
+        return NULL;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    return (char*)row->data + offset;
+}
+
+void* dynamic_row_get_blob(DynamicRow* row, TableDef* table_def, uint32_t col_idx, uint32_t* size) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BLOB) {
+        if (size) *size = 0;
+        return NULL;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    
+    // Get the actual size
+    uint32_t blob_size;
+    memcpy(&blob_size, (uint8_t*)row->data + offset, sizeof(uint32_t));
+    
+    if (size) *size = blob_size;
+    
+    // Return pointer to the blob data
+    return (uint8_t*)row->data + offset + sizeof(uint32_t);
+}
+
+void dynamic_row_free(DynamicRow* row) {
+    if (row->data) {
+        free(row->data);
+        row->data = NULL;
+        row->data_size = 0;
+    }
+}
+
+void serialize_dynamic_row(DynamicRow* source, TableDef* table_def, void* destination) {
+    // Simple copy since we're already using a packed memory layout
+    memcpy(destination, source->data, source->data_size);
+}
+
+void deserialize_dynamic_row(void* source, TableDef* table_def, DynamicRow* destination) {
+    // Make sure destination has a buffer allocated
+    if (destination->data == NULL) {
+        dynamic_row_init(destination, table_def);
+    }
+    
+    // Simple copy since we're using a packed memory layout
+    memcpy(destination->data, source, destination->data_size);
+}
+
+void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
+    printf("(");
+    
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        if (i > 0) {
+            printf(", ");
+        }
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                printf("%d", dynamic_row_get_int(row, table_def, i));
+                break;
+            case COLUMN_TYPE_FLOAT:
+                printf("%f", dynamic_row_get_float(row, table_def, i));
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                printf("%s", dynamic_row_get_boolean(row, table_def, i) ? "TRUE" : "FALSE");
+                break;
+            case COLUMN_TYPE_DATE:
+                printf("DATE(%d)", dynamic_row_get_date(row, table_def, i));
+                break;
+            case COLUMN_TYPE_TIME:
+                printf("TIME(%d)", dynamic_row_get_time(row, table_def, i));
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                printf("TIMESTAMP(%lld)", (long long)dynamic_row_get_timestamp(row, table_def, i));
+                break;
+            case COLUMN_TYPE_STRING:
+                printf("%s", dynamic_row_get_string(row, table_def, i));
+                break;
+            case COLUMN_TYPE_BLOB: {
+                uint32_t size;
+                void* blob = dynamic_row_get_blob(row, table_def, i, &size);
+                printf("<BLOB(%u bytes)>", size);
+                break;
+            }
+        }
+    }
+    
+    printf(")\n");
 }

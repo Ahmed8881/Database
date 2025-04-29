@@ -11,7 +11,7 @@ void indent(uint32_t level);
 
 // Define missing constants
 #define INTERNAL_NODE_MAX_CELLS 3
-#define INVALID_PAGE_NUM 0xFFFFFFFF
+
 
 /*** Leaf Node start ***/
 uint32_t *leaf_node_num_cells(void *node)
@@ -340,7 +340,7 @@ void create_new_root(Table *table, uint32_t right_child_page_num)
   if (get_node_type(left_child) == NODE_INTERNAL)
   {
     void *child;
-    for (int i = 0; i < *internal_node_num_keys(left_child); i++)
+    for (uint32_t i = 0; i < *internal_node_num_keys(left_child); i++)
     {
       child = get_page(table->pager, *internal_node_child(left_child, i));
       *node_parent(child) = left_child_page_num;
