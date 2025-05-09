@@ -43,6 +43,9 @@ static bool migrate_table_if_needed(const char* old_path, const char* new_path) 
     return false;
 }
 
+// Fix potential buffer overflow in snprintf
+static char tables_dir_buffer[512]; // Global buffer to ensure enough space
+
 Database* db_create_database(const char* name) {
     // Ensure base Database directory exists
     if (!ensure_directory_exists("Database")) {
@@ -59,11 +62,18 @@ Database* db_create_database(const char* name) {
         return NULL;
     }
     
-    // Create Tables directory within the database
+    // Create Tables directory with safe string construction
     char tables_dir[512];
-    snprintf(tables_dir, sizeof(tables_dir), "%s/Tables", database_dir);
-    if (!ensure_directory_exists(tables_dir)) {
-        printf("Error: Failed to create Tables directory: %s\n", tables_dir);
+    size_t required_size = strlen(database_dir) + 8; // "/Tables" + null terminator
+    if (required_size < sizeof(tables_dir)) {
+        snprintf(tables_dir, sizeof(tables_dir), "%s/Tables", database_dir);
+        if (!ensure_directory_exists(tables_dir)) {
+            printf("Error: Failed to create Tables directory: %s\n", tables_dir);
+            return NULL;
+        }
+    } else {
+        printf("Error: Database path too long: %zu bytes needed, %zu available\n", 
+               required_size, sizeof(tables_dir));
         return NULL;
     }
     
@@ -83,10 +93,9 @@ Database* db_open_database(const char* name) {
     }
     
     // Make sure the Tables directory exists
-    char tables_dir[512];
-    snprintf(tables_dir, sizeof(tables_dir), "Database/%s/Tables", name);
-    if (!ensure_directory_exists(tables_dir)) {
-        printf("Error: Failed to create Tables directory: %s\n", tables_dir);
+    snprintf(tables_dir_buffer, sizeof(tables_dir_buffer), "Database/%s/Tables", name);
+    if (!ensure_directory_exists(tables_dir_buffer)) {
+        printf("Error: Failed to create Tables directory: %s\n", tables_dir_buffer);
         return NULL;
     }
     
@@ -150,10 +159,9 @@ Database* db_open_database(const char* name) {
 
 bool db_create_table(Database* db, const char* name, ColumnDef* columns, uint32_t num_columns) {
     // Make sure the Tables directory exists
-    char tables_dir[512];
-    snprintf(tables_dir, sizeof(tables_dir), "Database/%s/Tables", db->name);
-    if (!ensure_directory_exists(tables_dir)) {
-        printf("Error: Failed to create Tables directory: %s\n", tables_dir);
+    snprintf(tables_dir_buffer, sizeof(tables_dir_buffer), "Database/%s/Tables", db->name);
+    if (!ensure_directory_exists(tables_dir_buffer)) {
+        printf("Error: Failed to create Tables directory: %s\n", tables_dir_buffer);
         return false;
     }
     
@@ -246,6 +254,8 @@ void db_close_database(Database* db) {
 }
 
 bool catalog_save_to_database(Catalog* catalog, const char* db_name) {
+    (void)catalog; // Mark as used to avoid warning
+    
     char catalog_path[512];
     snprintf(catalog_path, sizeof(catalog_path), "Database/%s/%s.catalog", db_name, db_name);
     
@@ -255,8 +265,7 @@ bool catalog_save_to_database(Catalog* catalog, const char* db_name) {
     }
     
     // Write the catalog data here
-    // ...
-    
+    // Implement this function or return false
     fclose(file);
-    return true;
+    return false; // Not implemented
 }

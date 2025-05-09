@@ -60,8 +60,15 @@ typedef struct
   ColumnDef columns[MAX_COLUMNS];
   uint32_t num_columns;
   
+  // New fields for variable-column insert values
+  char** values;
+  uint32_t num_values;
+  
   // Fields for database operations
   char database_name[256];
+  
+  // Reference to the database - needed for schema lookup
+  Database *db;
 } Statement;
 
 // Meta command function

@@ -12,7 +12,7 @@ void print_constants()
   printf("ROW_SIZE: %d\n", ROW_SIZE);
   printf("COMMON_NODE_HEADER_SIZE: %lu\n", COMMON_NODE_HEADER_SIZE);
   printf("LEAF_NODE_HEADER_SIZE: %lu\n", LEAF_NODE_HEADER_SIZE);
-  printf("LEAF_NODE_CELL_SIZE: %lu\n", LEAF_NODE_CELL_SIZE);
+  printf("LEAF_NODE_CELL_HEADER_SIZE: %lu\n", LEAF_NODE_CELL_HEADER_SIZE);
   printf("LEAF_NODE_SPACE_FOR_CELLS: %lu\n", LEAF_NODE_SPACE_FOR_CELLS);
   printf("LEAF_NODE_MAX_CELLS: %lu\n", LEAF_NODE_MAX_CELLS);
 }
@@ -125,119 +125,106 @@ PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
       return PREPARE_SYNTAX_ERROR;
     }
     
-    // Extract ID, name and other values
-    char *id_str = open_paren + 1;
-    while (*id_str == ' ') id_str++; // Skip spaces
-    
-    // Parse the ID
-    char *comma = strchr(id_str, ',');
-    if (!comma) {
+    // Find closing parenthesis
+    char *close_paren = strrchr(open_paren, ')');
+    if (!close_paren) {
       return PREPARE_SYNTAX_ERROR;
     }
     
-    char id_buffer[32];
-    int id_len = comma - id_str;
-    strncpy(id_buffer, id_str, id_len);
-    id_buffer[id_len] = '\0';
+    // This is where we'll store our values
+    statement->num_values = 0;
+    statement->values = NULL;
     
-    // Convert ID to integer
-    int id = atoi(id_buffer);
-    if (id < 0) {
-      return PREPARE_NEGATIVE_ID;
+    // Extract all values between parentheses
+    char *value_str = open_paren + 1;
+    while (value_str < close_paren && statement->num_values < MAX_COLUMNS) {
+      while (*value_str == ' ' || *value_str == '\t') value_str++; // Skip spaces
+      
+      if (value_str >= close_paren) break;
+      
+      // Allocate space for the new value
+      statement->values = realloc(statement->values, 
+                                (statement->num_values + 1) * sizeof(char*));
+      if (!statement->values) {
+        return PREPARE_SYNTAX_ERROR;
+      }
+      
+      // Handle quoted strings
+      if (*value_str == '"' || *value_str == '\'') {
+        char quote_char = *value_str;
+        value_str++; // Skip opening quote
+        
+        // Find closing quote
+        char *end_quote = strchr(value_str, quote_char);
+        if (!end_quote || end_quote >= close_paren) {
+          return PREPARE_SYNTAX_ERROR;
+        }
+        
+        int value_len = end_quote - value_str;
+        char *value = malloc(value_len + 1);
+        if (!value) return PREPARE_SYNTAX_ERROR;
+        
+        strncpy(value, value_str, value_len);
+        value[value_len] = '\0';
+        
+        statement->values[statement->num_values++] = value;
+        value_str = end_quote + 1;
+      } else {
+        // Handle non-quoted values (numbers, etc.)
+        char *comma = strchr(value_str, ',');
+        if (!comma || comma > close_paren) comma = close_paren;
+        
+        int value_len = comma - value_str;
+        while (value_len > 0 && (value_str[value_len-1] == ' ' || value_str[value_len-1] == '\t')) 
+          value_len--; // Trim trailing spaces
+        
+        char *value = malloc(value_len + 1);
+        if (!value) return PREPARE_SYNTAX_ERROR;
+        
+        strncpy(value, value_str, value_len);
+        value[value_len] = '\0';
+        
+        statement->values[statement->num_values++] = value;
+        value_str = comma;
+      }
+      
+      // Skip comma if present
+      if (*value_str == ',') value_str++;
     }
     
-    // Parse username/name (may be in quotes)
-    char *name_start = comma + 1;
-    while (*name_start == ' ') name_start++; // Skip spaces
-    
-    char *name_end;
-    char username[COLUMN_USERNAME_SIZE + 1] = {0};
-    
-    if (*name_start == '"' || *name_start == '\'') {
-      // Name is in quotes
-      char quote_char = *name_start;
-      name_start++; // Skip opening quote
-      name_end = strchr(name_start, quote_char);
-      if (!name_end) {
-        return PREPARE_SYNTAX_ERROR;
+    // For backward compatibility, still populate the old row_to_insert structure
+    if (statement->num_values >= 1) {
+      statement->row_to_insert.id = atoi(statement->values[0]);
+      // Check for negative ID - must check after conversion to int
+      if (atoi(statement->values[0]) < 0) {
+        for (uint32_t i = 0; i < statement->num_values; i++) {
+          free(statement->values[i]);
+        }
+        free(statement->values);
+        return PREPARE_NEGATIVE_ID;
       }
-      
-      int name_len = name_end - name_start;
-      if (name_len > COLUMN_USERNAME_SIZE) {
-        return PREPARE_STRING_TOO_LONG;
-      }
-      
-      strncpy(username, name_start, name_len);
-      username[name_len] = '\0';
-      
-      // Move past the closing quote
-      name_end++;
-    } else {
-      // Name is not in quotes
-      name_end = strchr(name_start, ',');
-      if (!name_end) {
-        return PREPARE_SYNTAX_ERROR;
-      }
-      
-      int name_len = name_end - name_start;
-      if (name_len > COLUMN_USERNAME_SIZE) {
-        return PREPARE_STRING_TOO_LONG;
-      }
-      
-      strncpy(username, name_start, name_len);
-      username[name_len] = '\0';
     }
     
-    // Parse the third value (could be email, grade, etc.)
-    char *third_value_start = name_end + 1;
-    while (*third_value_start == ' ') third_value_start++; // Skip spaces
-    
-    char *third_value_end;
-    char email[COLUMN_EMAIL_SIZE + 1] = {0};
-    
-    if (*third_value_start == '"' || *third_value_start == '\'') {
-      // Value is in quotes
-      char quote_char = *third_value_start;
-      third_value_start++; // Skip opening quote
-      third_value_end = strchr(third_value_start, quote_char);
-      if (!third_value_end) {
-        return PREPARE_SYNTAX_ERROR;
-      }
-      
-      int value_len = third_value_end - third_value_start;
-      if (value_len > COLUMN_EMAIL_SIZE) {
-        return PREPARE_STRING_TOO_LONG;
-      }
-      
-      strncpy(email, third_value_start, value_len);
-      email[value_len] = '\0';
-    } else {
-      // Value is not in quotes - could be a number or unquoted string
-      third_value_end = strchr(third_value_start, ')');
-      if (!third_value_end) {
-        return PREPARE_SYNTAX_ERROR;
-      }
-      
-      int value_len = third_value_end - third_value_start;
-      if (value_len > COLUMN_EMAIL_SIZE) {
-        return PREPARE_STRING_TOO_LONG;
-      }
-      
-      strncpy(email, third_value_start, value_len);
-      email[value_len] = '\0';
+    if (statement->num_values >= 2) {
+      strncpy(statement->row_to_insert.username, 
+              statement->values[1], 
+              COLUMN_USERNAME_SIZE);
+      statement->row_to_insert.username[COLUMN_USERNAME_SIZE] = '\0';
     }
     
-    // Store the values in statement
-    statement->row_to_insert.id = id;
-    strcpy(statement->row_to_insert.username, username);
-    strcpy(statement->row_to_insert.email, email);
+    if (statement->num_values >= 3) {
+      strncpy(statement->row_to_insert.email, 
+              statement->values[2], 
+              COLUMN_EMAIL_SIZE);
+      statement->row_to_insert.email[COLUMN_EMAIL_SIZE] = '\0';
+    }
     
     return PREPARE_SUCCESS;
   } else {
     // Old syntax: insert 1 username email
     // Use the existing implementation
-    char *keyword = strtok(buf->buffer, " ");  // "insert"
-    char *id_string = strtok(NULL, " ");
+    char *id_string = strtok(buf->buffer, " ");  // Will get "insert"
+    id_string = strtok(NULL, " ");  // Get the actual ID
     char *username = strtok(NULL, " ");
     char *email = strtok(NULL, " ");
 
@@ -482,38 +469,169 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
 
 ExecuteResult execute_insert(Statement *statement, Table *table)
 {
-  void *node = get_page(table->pager, table->root_page_num);
-  uint32_t num_cells = *leaf_node_num_cells(node);
+  // Get active table definition from database catalog
+  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+  if (!table_def) {
+    printf("Error: No active table definition found.\n");
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
 
-  Row *row_to_insert = &(statement->row_to_insert);
-  uint32_t key_to_insert = row_to_insert->id;
+  // Create a dynamic row
+  DynamicRow row;
+  dynamic_row_init(&row, table_def);
+
+  // Get primary key from the first value
+  uint32_t key_to_insert = 0;
+  
+  // Check if we have values to insert
+  if (!statement->values || statement->num_values == 0) {
+    // Use the legacy row_to_insert approach for backward compatibility
+    key_to_insert = statement->row_to_insert.id;
+    
+    // Set the primary key (assuming first column is the key)
+    if (table_def->num_columns > 0 && table_def->columns[0].type == COLUMN_TYPE_INT) {
+      dynamic_row_set_int(&row, table_def, 0, key_to_insert);
+      printf("DEBUG: Set primary key %d using legacy approach\n", key_to_insert);
+    }
+    
+    // Fill in other column values if they exist
+    if (table_def->num_columns > 1) {
+      if (table_def->columns[1].type == COLUMN_TYPE_STRING) {
+        dynamic_row_set_string(&row, table_def, 1, statement->row_to_insert.username);
+        printf("DEBUG: Set column 1 to '%s' using legacy approach\n", statement->row_to_insert.username);
+      }
+    }
+    
+    if (table_def->num_columns > 2) {
+      if (table_def->columns[2].type == COLUMN_TYPE_STRING) {
+        dynamic_row_set_string(&row, table_def, 2, statement->row_to_insert.email);
+        printf("DEBUG: Set column 2 to '%s' using legacy approach\n", statement->row_to_insert.email);
+      }
+    }
+  } else {
+    // Use the new values array for more flexible column handling
+    key_to_insert = atoi(statement->values[0]);
+    printf("DEBUG: Inserting new row with %d columns\n", statement->num_values);
+    
+    // Set values for each column
+    for (uint32_t i = 0; i < table_def->num_columns && i < statement->num_values; i++) {
+      ColumnDef* col = &table_def->columns[i];
+      char* value = statement->values[i];
+      
+      printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name, value);
+      
+      switch (col->type) {
+        case COLUMN_TYPE_INT:
+          dynamic_row_set_int(&row, table_def, i, atoi(value));
+          break;
+        case COLUMN_TYPE_STRING:
+          dynamic_row_set_string(&row, table_def, i, value);
+          break;
+        case COLUMN_TYPE_FLOAT:
+          dynamic_row_set_float(&row, table_def, i, atof(value));
+          break;
+        case COLUMN_TYPE_BOOLEAN:
+          dynamic_row_set_boolean(&row, table_def, i, 
+              (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0));
+          break;
+        // Add other cases as needed
+        default:
+          // For now, just skip unsupported types
+          printf("DEBUG: Unsupported type for column %d\n", i);
+          break;
+      }
+    }
+  }
+  
+  // Debug print: Show what we're about to insert
+  printf("Inserting row with key: %d\n", key_to_insert);
+  print_dynamic_row(&row, table_def); // Add this to see the row content before insertion
+  
   Cursor *cursor = table_find(table, key_to_insert);
+  if (!cursor) {
+    printf("Error: Failed to create cursor for insertion.\n");
+    dynamic_row_free(&row);
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
 
-  // Handle special case of duplicate key
+  // Handle duplicate key
   void *cur_node = get_page(table->pager, cursor->page_num);
   if (cursor->cell_num < (*leaf_node_num_cells(cur_node)) && 
       key_to_insert == *leaf_node_key(cur_node, cursor->cell_num)) {
-      return EXECUTE_DUPLICATE_KEY;
+    printf("Error: Duplicate key detected: %d\n", key_to_insert);
+    dynamic_row_free(&row);
+    free(cursor);
+    
+    // Free the values array if it exists
+    if (statement->values) {
+      for (uint32_t i = 0; i < statement->num_values; i++) {
+        free(statement->values[i]);
+      }
+      free(statement->values);
+      statement->values = NULL;
+      statement->num_values = 0;
+    }
+    
+    return EXECUTE_DUPLICATE_KEY;
   }
 
-  leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
-
+  leaf_node_insert(cursor, key_to_insert, &row, table_def);
+  printf("Row successfully inserted with key: %d\n", key_to_insert);
+  
   free(cursor);
+  dynamic_row_free(&row);
+  
+  // Free the values array if it exists
+  if (statement->values) {
+    for (uint32_t i = 0; i < statement->num_values; i++) {
+      free(statement->values[i]);
+    }
+    free(statement->values);
+    statement->values = NULL;
+    statement->num_values = 0;
+  }
 
   return EXECUTE_SUCCESS;
 }
 
+// Fix unused parameter warning by explicitly marking it
 ExecuteResult execute_select(Statement *statement, Table *table)
 {
+  (void)statement; // Mark parameter as used
+  
+  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+  if (!table_def) {
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+  
+  printf("DEBUG: Selecting from table with %d columns\n", table_def->num_columns);
+  
   Cursor *cursor = table_start(table);
+  DynamicRow row;
+  dynamic_row_init(&row, table_def);
 
-  Row row;
+  // Print column names as header
+  printf("| ");
+  for (uint32_t i = 0; i < table_def->num_columns; i++) {
+    printf("%s | ", table_def->columns[i].name);
+  }
+  printf("\n");
+  
+  // Print separator line
+  for (uint32_t i = 0; i < table_def->num_columns; i++) {
+    printf("|-%s-", "----------");
+  }
+  printf("|\n");
+  
   while (!(cursor->end_of_table)) {
-    deserialize_row(cursor_value(cursor), &row);
-    print_row(&row);
+    void* value = cursor_value(cursor);
+    
+    deserialize_dynamic_row(value, table_def, &row);
+    print_dynamic_row(&row, table_def);
     cursor_advance(cursor);
   }
 
+  dynamic_row_free(&row);
   free(cursor);
 
   return EXECUTE_SUCCESS;
@@ -521,18 +639,26 @@ ExecuteResult execute_select(Statement *statement, Table *table)
 
 ExecuteResult execute_select_by_id(Statement *statement, Table *table)
 {
+  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+  if (!table_def) {
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+  
   Cursor *cursor = table_find(table, statement->id_to_select);
-
-  Row row;
+  
   if (!cursor->end_of_table) {
-    deserialize_row(cursor_value(cursor), &row);
-    print_row(&row);
+    DynamicRow row;
+    dynamic_row_init(&row, table_def);
+    
+    deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
+    print_dynamic_row(&row, table_def);
+    
+    dynamic_row_free(&row);
   } else {
     printf("No row found with id %d\n", statement->id_to_select);
   }
   
   free(cursor);
-  
   return EXECUTE_SUCCESS;
 }
 
@@ -589,8 +715,24 @@ ExecuteResult execute_delete(Statement *statement, Table *table)
   
   // Shift cells to overwrite the one being deleted
   if (cursor->cell_num < num_cells - 1) {
-    for (uint32_t i = cursor->cell_num; i < num_cells - 1; i++) {
-      memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i + 1), LEAF_NODE_CELL_SIZE);
+    // For variable-sized cells, we need to manually copy and shift each cell
+    uint32_t current_pos = cursor->cell_num;
+    
+    // Get pointer to the cell being deleted
+    void *cell_to_delete = leaf_node_cell(node, current_pos);
+    
+    // Get pointer to the next cell
+    void *next_cell = leaf_node_next_cell(node, current_pos);
+    
+    // Calculate total size of data after this cell
+    uint32_t bytes_to_move = 0;
+    for (uint32_t i = current_pos + 1; i < num_cells; i++) {
+      bytes_to_move += leaf_node_cell_size(node, i);
+    }
+    
+    // Move all following cells backward
+    if (bytes_to_move > 0) {
+      memmove(cell_to_delete, next_cell, bytes_to_move);
     }
   }
   
@@ -661,6 +803,11 @@ PrepareResult prepare_create_table(Input_Buffer* buf, Statement* statement) {
                     *size_end = '\0';
                     char* size_str = size_start + 1;
                     column->size = atoi(size_str);
+                    if (column->size == 0) {  // Set default if parsing failed or explicit 0
+                        column->size = 1024;  // 1KB default
+                    }
+                } else {
+                    column->size = 1024;  // Default if parsing failed
                 }
             } else {
                 // Default blob size
@@ -677,12 +824,19 @@ PrepareResult prepare_create_table(Input_Buffer* buf, Statement* statement) {
                     *size_end = '\0';
                     char* size_str = size_start + 1;
                     column->size = atoi(size_str);
-                    column->size++; // Add space for null terminator
+                    if (column->size == 0) {  // Set default if parsing failed or explicit 0
+                        column->size = 255;  // Default string size
+                    }
+                } else {
+                    column->size = 255;  // Default if parsing failed
                 }
             } else {
                 // Default string size
                 column->size = 255;
             }
+            
+            // No need to add space for null terminator - this is handled in dynamic_row_init
+            printf("DEBUG: Set string column '%s' size to %u\n", column->name, column->size);
         } else {
             return PREPARE_SYNTAX_ERROR;
         }
@@ -716,7 +870,9 @@ PrepareResult prepare_use_table(Input_Buffer* buf, Statement* statement) {
     return PREPARE_SUCCESS;
 }
 
+// Fix unused parameter warning
 PrepareResult prepare_show_tables(Input_Buffer* buf, Statement* statement) {
+    (void)buf; // Mark parameter as used
     statement->type = STATEMENT_SHOW_TABLES;
     return PREPARE_SUCCESS;
 }
@@ -741,7 +897,10 @@ ExecuteResult execute_use_table(Statement* statement, Database* db) {
     }
 }
 
+// Fix unused parameter warning
 ExecuteResult execute_show_tables(Statement* statement, Database* db) {
+    (void)statement; // Mark parameter as used
+    
     printf("Tables in database %s:\n", db->name);
     
     if (db->catalog.num_tables == 0) {

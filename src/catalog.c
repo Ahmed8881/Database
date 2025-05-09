@@ -29,12 +29,30 @@ bool catalog_add_table(Catalog* catalog, const char* name, ColumnDef* columns, u
     table->num_columns = num_columns;
     for (uint32_t i = 0; i < num_columns; i++) {
         table->columns[i] = columns[i];
+        
+        // Verify column sizes are reasonable
+        if (table->columns[i].type == COLUMN_TYPE_STRING && table->columns[i].size == 0) {
+            printf("WARNING: Column %s has size 0, setting to default 255\n", table->columns[i].name);
+            table->columns[i].size = 255;
+        }
+        
+        if (table->columns[i].type == COLUMN_TYPE_BLOB && table->columns[i].size == 0) {
+            printf("WARNING: BLOB column %s has size 0, setting to default 1024\n", table->columns[i].name);
+            table->columns[i].size = 1024;
+        }
     }
     
-    // Set up the filename for this table in the correct Tables subdirectory
-    // The directory should be Database/<database_name>/Tables/
-    snprintf(table->filename, sizeof(table->filename), "Database/%s/Tables/%s.tbl", 
+    // Fix the potential buffer overflow warning - use a fixed buffer size
+    char filename_buffer[512]; // Use a larger buffer
+    snprintf(filename_buffer, sizeof(filename_buffer), "Database/%s/Tables/%s.tbl", 
              catalog->database_name, name);
+    
+    // Copy safely to the destination with truncation check
+    if (strlen(filename_buffer) >= sizeof(table->filename)) {
+        printf("Warning: Path too long, truncating: %s\n", filename_buffer);
+    }
+    strncpy(table->filename, filename_buffer, sizeof(table->filename) - 1);
+    table->filename[sizeof(table->filename) - 1] = '\0';
     
     catalog->num_tables++;
     return true;

@@ -10,15 +10,33 @@
 #include <strings.h>
 
 int main(int argc, char *argv[]) {
+    (void)argc; // Mark as used to avoid warning
+    (void)argv; // Mark as used to avoid warning
+    
     // Start with no active database
     Database* db = NULL;
     
     Input_Buffer *input_buf = newInputBuffer();
     while (1) {
         read_input(input_buf);
-        if (input_buf->buffer[0] == '.') {
+        
+        // Trim any trailing newlines or whitespace
+        char *trimmed_input = input_buf->buffer;
+        size_t len = strlen(trimmed_input);
+        while (len > 0 && (trimmed_input[len-1] == '\n' || trimmed_input[len-1] == '\r' || 
+                         trimmed_input[len-1] == ' ' || trimmed_input[len-1] == '\t')) {
+            trimmed_input[--len] = '\0';
+        }
+        
+        // Skip empty lines
+        if (len == 0) {
+            continue;
+        }
+        
+        // Process the single command
+        if (trimmed_input[0] == '.') {
             // If no database is open, only allow certain meta commands
-            if (!db && strcmp(input_buf->buffer, ".exit") != 0) {
+            if (!db && strcmp(trimmed_input, ".exit") != 0) {
                 printf("Error: No database is currently open.\n");
                 printf("Create or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
                 continue;
@@ -28,15 +46,16 @@ int main(int argc, char *argv[]) {
                 case META_COMMAND_SUCCESS:
                     continue;
                 case META_COMMAND_UNRECOGNIZED_COMMAND:
-                    printf("Unrecognized command %s\n", input_buf->buffer);
+                    printf("Unrecognized command %s\n", trimmed_input);
                     continue;
             }
         } else {
             Statement statement;
+            memset(&statement, 0, sizeof(Statement));  // Initialize all fields
             
             // Check for database creation or use commands before requiring an active database
-            if (strncasecmp(input_buf->buffer, "create database", 15) == 0 ||
-                strncasecmp(input_buf->buffer, "use database", 12) == 0) {
+            if (strncasecmp(trimmed_input, "create database", 15) == 0 ||
+                strncasecmp(trimmed_input, "use database", 12) == 0) {
                 
                 switch (prepare_database_statement(input_buf, &statement)) {
                     case PREPARE_SUCCESS:
@@ -71,6 +90,8 @@ int main(int argc, char *argv[]) {
             
             switch (prepare_statement(input_buf, &statement)) {
                 case PREPARE_SUCCESS:
+                    // Add database reference to statement
+                    statement.db = db;
                     break;
                 case PREPARE_NEGATIVE_ID:
                     printf("ID must be positive.\n");
@@ -83,11 +104,12 @@ int main(int argc, char *argv[]) {
                     continue;
                 case PREPARE_UNRECOGNIZED_STATEMENT:
                     printf("Unrecognized keyword at the start of '%s'.\n",
-                        input_buf->buffer);
+                        trimmed_input);
                     continue;
             }
             
-            switch (execute_statement(&statement, db)) {
+            ExecuteResult result = execute_statement(&statement, db);
+            switch (result) {
                 case EXECUTE_SUCCESS:
                     printf("Executed.\n");
                     break;
@@ -98,7 +120,7 @@ int main(int argc, char *argv[]) {
                     printf("Error: Table full.\n");
                     break;
                 case EXECUTE_UNRECOGNIZED_STATEMENT:
-                    printf("Unrecognized statement at '%s'.\n", input_buf->buffer);
+                    printf("Unrecognized statement at '%s'.\n", trimmed_input);
                     break;
             }
         }

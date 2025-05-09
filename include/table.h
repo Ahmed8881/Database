@@ -17,6 +17,8 @@
 #define COLUMN_EMAIL_SIZE 255
 
 #pragma pack(push, 1)
+// DEPRECATED: This fixed structure should be replaced with DynamicRow
+// Only kept for backward compatibility
 typedef struct
 {
   uint32_t id;
