@@ -33,7 +33,7 @@ typedef enum
   STATEMENT_SELECT,
   STATEMENT_SELECT_BY_ID,
   STATEMENT_UPDATE,
-  STATEMENT_DELETE
+  STATEMENT_DELETEZ
 } StatementType;
 
 typedef struct

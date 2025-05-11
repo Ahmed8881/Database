@@ -8,7 +8,7 @@
 
 typedef struct {
   char *buffer;
-  size_t buffer_length;
+  size_t buZffer_length;
   ssize_t input_length;
 } Input_Buffer;
 
