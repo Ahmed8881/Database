@@ -13,6 +13,9 @@
 #include <unistd.h>
 #endif
 
+// Function prototype for get_column_offset to prevent implicit declaration error
+uint32_t get_column_offset(TableDef* table_def, uint32_t col_idx);
+
 const uint32_t ID_SIZE = size_of_attribute(Row, id);
 const uint32_t USERNAME_SIZE = size_of_attribute(Row, username);
 const uint32_t EMAIL_SIZE = size_of_attribute(Row, email);
@@ -79,9 +82,65 @@ Table *db_open(const char *file_name)
   return table;
 }
 
+// Function to create all directories in a file path
+static void create_path_for_file(const char* file_path) {
+    char dir_path[512];
+    strncpy(dir_path, file_path, sizeof(dir_path) - 1);
+    dir_path[sizeof(dir_path) - 1] = '\0';
+    
+    // Find the last slash to get directory part
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash == NULL) {
+        // No directory part
+        return;
+    }
+    
+    *last_slash = '\0'; // Truncate at the last slash to get directory part
+    
+    // We'll build the path one component at a time
+    char path_so_far[512] = {0};
+    char *component = dir_path;
+    
+    while (*component) {
+        // Find next path separator
+        char *next_separator = strchr(component, '/');
+        if (next_separator) {
+            *next_separator = '\0'; // Temporarily terminate the string
+        }
+        
+        // Add current component to the path so far
+        if (path_so_far[0] != '\0') {
+            strcat(path_so_far, "/");
+        }
+        strcat(path_so_far, component);
+        
+        // Create this directory if it doesn't exist
+        struct stat st = {0};
+        if (stat(path_so_far, &st) == -1) {
+            #ifdef _WIN32
+            mkdir(path_so_far);
+            #else
+            mkdir(path_so_far, 0755);
+            #endif
+            printf("Created directory: %s\n", path_so_far);
+        }
+        
+        // Move to next component
+        if (next_separator) {
+            *next_separator = '/'; // Restore the path separator
+            component = next_separator + 1;
+        } else {
+            break;
+        }
+    }
+}
+
 // function for openinng the file and initializes the pager object
 Pager *pager_open(const char *file_name)
 {
+  // Create all necessary directories before opening file
+  create_path_for_file(file_name);
+  
   // open the file
   // O_RDWR: open the file for reading and writing
   // O_CREAT: create the file if it does not exist
@@ -92,7 +151,7 @@ Pager *pager_open(const char *file_name)
   // os returns -1 if fails to open file
   if (fd == -1)
   {
-    printf("Unable to open file\n");
+    perror("Unable to open file"); // Print detailed error
     exit(EXIT_FAILURE);
   }
   // taking the file length means from 0 to end fo file
@@ -215,12 +274,11 @@ Cursor *table_start(Table *table)
 
 void *cursor_value(Cursor *cursor)
 {
-
   uint32_t page_num = cursor->page_num;
   void *page = get_page(cursor->table->pager, page_num);
-
   return leaf_node_value(page, cursor->cell_num);
 }
+
 void cursor_advance(Cursor *cursor)
 {
   uint32_t page_num = cursor->page_num;
@@ -241,4 +299,500 @@ void cursor_advance(Cursor *cursor)
       cursor->cell_num = 0;
     }
   }
+}
+
+void dynamic_row_init(DynamicRow* row, TableDef* table_def) {
+    // Calculate the total size needed for the row
+    uint32_t size = 0;
+    
+    printf("DEBUG: Initializing DynamicRow for table with %d columns\n", table_def->num_columns);
+    
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        printf("DEBUG: Column %d (%s) of type %d with size %u\n", 
+               i, col->name, col->type, col->size);
+               
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                size += sizeof(float);
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                size += sizeof(uint8_t);
+                break;
+            case COLUMN_TYPE_DATE:
+            case COLUMN_TYPE_TIME:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                size += sizeof(int64_t);
+                break;
+            case COLUMN_TYPE_STRING:
+                // Add 1 for null terminator
+                size += col->size + 1;
+                break;
+            case COLUMN_TYPE_BLOB:
+                // Size prefix + data
+                size += col->size + sizeof(uint32_t);
+                break;
+        }
+    }
+    
+    printf("DEBUG: Allocating %u bytes for row\n", size);
+    
+    row->data = malloc(size);
+    if (row->data == NULL) {
+        fprintf(stderr, "ERROR: Failed to allocate %u bytes for row\n", size);
+        exit(EXIT_FAILURE);
+    }
+    
+    row->data_size = size;
+    memset(row->data, 0, size); // Initialize to zeros
+}
+
+void dynamic_row_set_string(DynamicRow* row, TableDef* table_def, uint32_t col_idx, const char* value) {
+    if (col_idx >= table_def->num_columns) {
+        fprintf(stderr, "ERROR: Column index %u out of bounds (max %u)\n", 
+               col_idx, 
+               table_def->num_columns > 0 ? table_def->num_columns - 1 : 0);
+        return;
+    }
+    
+    ColumnDef* col = &table_def->columns[col_idx];
+    if (col->type != COLUMN_TYPE_STRING) {
+        fprintf(stderr, "ERROR: Column %s is not a string type (actual type: %d)\n", 
+               col->name, col->type);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint32_t max_str_size = col->size;
+    
+    // Check for null value
+    if (!value) {
+        // Handle NULL strings by setting first byte to 0
+        ((char*)row->data)[offset] = '\0';
+        printf("DEBUG: Storing NULL string at column %s (idx=%d, offset=%d)\n", 
+               col->name, col_idx, offset);
+        return;
+    }
+    
+    // Calculate safe copy length (leave room for null terminator)
+    size_t value_len = strlen(value);
+    size_t copy_len = (value_len < max_str_size) ? value_len : max_str_size - 1;
+    
+    // Make sure we don't exceed the buffer size
+    if (offset + copy_len >= row->data_size) {
+        fprintf(stderr, "ERROR: String would overflow row buffer: offset=%u, copy_len=%zu, buffer_size=%u\n",
+               offset, copy_len, row->data_size);
+        copy_len = row->data_size > offset + 1 ? row->data_size - offset - 1 : 0;
+    }
+    
+    // Copy string data and ensure null termination
+    if (copy_len > 0) {
+        memcpy((char*)row->data + offset, value, copy_len);
+    }
+    ((char*)row->data)[offset + copy_len] = '\0';
+    
+    printf("DEBUG: Stored string '%s' (len=%zu, copied=%zu) at column %s (idx=%d, offset=%d, max_size=%d)\n", 
+           value, value_len, copy_len, col->name, col_idx, offset, max_str_size);
+}
+
+// Helper function to calculate column offset
+uint32_t get_column_offset(TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns) {
+        fprintf(stderr, "ERROR: Column index %u out of bounds (max %u)\n", 
+                col_idx, table_def->num_columns > 0 ? table_def->num_columns - 1 : 0);
+        return 0;
+    }
+    
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < col_idx; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                offset += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                offset += sizeof(float);
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                offset += sizeof(uint8_t);
+                break;
+            case COLUMN_TYPE_DATE:
+            case COLUMN_TYPE_TIME:
+                offset += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                offset += sizeof(int64_t);
+                break;
+            case COLUMN_TYPE_STRING:
+                offset += col->size + 1;  // Include null terminator
+                break;
+            case COLUMN_TYPE_BLOB:
+                offset += col->size + sizeof(uint32_t);  // Size prefix + data
+                break;
+        }
+    }
+    
+    printf("DEBUG: Offset for column %u (%s) is %u bytes\n", 
+           col_idx, table_def->columns[col_idx].name, offset);
+           
+    return offset;
+}
+
+void dynamic_row_set_int(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_INT) {
+        fprintf(stderr, "ERROR: Cannot set int value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+    
+    printf("DEBUG: Set INT value %d at offset %u\n", value, offset);
+}
+
+void dynamic_row_set_float(DynamicRow* row, TableDef* table_def, uint32_t col_idx, float value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_FLOAT) {
+        fprintf(stderr, "ERROR: Cannot set float value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(float));
+    
+    printf("DEBUG: Set FLOAT value %f at offset %u\n", value, offset);
+}
+
+void dynamic_row_set_boolean(DynamicRow* row, TableDef* table_def, uint32_t col_idx, bool value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BOOLEAN) {
+        fprintf(stderr, "ERROR: Cannot set boolean value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint8_t bool_val = value ? 1 : 0;
+    memcpy((uint8_t*)row->data + offset, &bool_val, sizeof(uint8_t));
+    
+    printf("DEBUG: Set BOOLEAN value %d at offset %u\n", bool_val, offset);
+}
+
+void dynamic_row_set_date(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_DATE) {
+        fprintf(stderr, "ERROR: Cannot set date value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+    
+    printf("DEBUG: Set DATE value %d at offset %u\n", value, offset);
+}
+
+void dynamic_row_set_time(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int32_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIME) {
+        fprintf(stderr, "ERROR: Cannot set time value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int32_t));
+    
+    printf("DEBUG: Set TIME value %d at offset %u\n", value, offset);
+}
+
+void dynamic_row_set_timestamp(DynamicRow* row, TableDef* table_def, uint32_t col_idx, int64_t value) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIMESTAMP) {
+        fprintf(stderr, "ERROR: Cannot set timestamp value for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    memcpy((uint8_t*)row->data + offset, &value, sizeof(int64_t));
+    
+    printf("DEBUG: Set TIMESTAMP value %lld at offset %u\n", (long long)value, offset);
+}
+
+char* dynamic_row_get_string(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns) {
+        fprintf(stderr, "ERROR: Invalid get_string call: idx=%d, num_cols=%d\n", 
+               col_idx, table_def->num_columns);
+        return NULL;
+    }
+    
+    ColumnDef* col = &table_def->columns[col_idx];
+    if (col->type != COLUMN_TYPE_STRING) {
+        fprintf(stderr, "ERROR: Column %s is not a string type\n", col->name);
+        return NULL;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    
+    // Safety check to make sure offset is within buffer
+    if (offset >= row->data_size) {
+        fprintf(stderr, "ERROR: String offset %u is beyond buffer size %u\n", offset, row->data_size);
+        return NULL;
+    }
+    
+    char* result = (char*)row->data + offset;
+    
+    // Verify string is null-terminated within the buffer
+    bool found_null = false;
+    for (uint32_t i = 0; i < col->size && offset + i < row->data_size; i++) {
+        if (result[i] == '\0') {
+            found_null = true;
+            break;
+        }
+    }
+    
+    if (!found_null) {
+        // If there's no null terminator, force one at the end of the allocated space
+        uint32_t max_pos = (offset + col->size - 1 < row->data_size) ? 
+                          col->size - 1 : row->data_size - offset - 1;
+        result[max_pos] = '\0';
+        printf("WARNING: Fixed missing null terminator in column %s\n", col->name);
+    }
+    
+    printf("DEBUG: Retrieved string '%s' from column %s (idx=%d, offset=%d)\n", 
+           result, col->name, col_idx, offset);
+    
+    return result;
+}
+
+void dynamic_row_set_blob(DynamicRow* row, TableDef* table_def, uint32_t col_idx, const void* data, uint32_t size) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BLOB) {
+        fprintf(stderr, "ERROR: Cannot set blob data for column %u\n", col_idx);
+        return;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint32_t max_size = table_def->columns[col_idx].size;
+    
+    // First store the actual size being used
+    uint32_t actual_size = size > max_size ? max_size : size;
+    memcpy((uint8_t*)row->data + offset, &actual_size, sizeof(uint32_t));
+    
+    // Then store the blob data
+    memcpy((uint8_t*)row->data + offset + sizeof(uint32_t), data, actual_size);
+    
+    printf("DEBUG: Stored BLOB data (%u bytes) at offset %u\n", actual_size, offset);
+}
+
+int32_t dynamic_row_get_int(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_INT) {
+        fprintf(stderr, "ERROR: Cannot get int value from column %u\n", col_idx);
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+float dynamic_row_get_float(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_FLOAT) {
+        fprintf(stderr, "ERROR: Cannot get float value from column %u\n", col_idx);
+        return 0.0f;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    float value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(float));
+    return value;
+}
+
+bool dynamic_row_get_boolean(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BOOLEAN) {
+        fprintf(stderr, "ERROR: Cannot get boolean value from column %u\n", col_idx);
+        return false;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    uint8_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(uint8_t));
+    return value != 0;
+}
+
+int32_t dynamic_row_get_date(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_DATE) {
+        fprintf(stderr, "ERROR: Cannot get date value from column %u\n", col_idx);
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+int32_t dynamic_row_get_time(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIME) {
+        fprintf(stderr, "ERROR: Cannot get time value from column %u\n", col_idx);
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int32_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int32_t));
+    return value;
+}
+
+int64_t dynamic_row_get_timestamp(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_TIMESTAMP) {
+        fprintf(stderr, "ERROR: Cannot get timestamp value from column %u\n", col_idx);
+        return 0;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    int64_t value;
+    memcpy(&value, (uint8_t*)row->data + offset, sizeof(int64_t));
+    return value;
+}
+
+void* dynamic_row_get_blob(DynamicRow* row, TableDef* table_def, uint32_t col_idx, uint32_t* size) {
+    if (col_idx >= table_def->num_columns || table_def->columns[col_idx].type != COLUMN_TYPE_BLOB) {
+        if (size) *size = 0;
+        fprintf(stderr, "ERROR: Cannot get blob data from column %u\n", col_idx);
+        return NULL;
+    }
+    
+    uint32_t offset = get_column_offset(table_def, col_idx);
+    
+    // Get the actual size
+    uint32_t blob_size;
+    memcpy(&blob_size, (uint8_t*)row->data + offset, sizeof(uint32_t));
+    
+    if (size) *size = blob_size;
+    
+    // Return pointer to the blob data
+    return (uint8_t*)row->data + offset + sizeof(uint32_t);
+}
+
+void dynamic_row_free(DynamicRow* row) {
+    if (row->data) {
+        free(row->data);
+        row->data = NULL;
+        row->data_size = 0;
+    }
+}
+
+void serialize_dynamic_row(DynamicRow* source, TableDef* table_def, void* destination) {
+    printf("DEBUG: Serializing dynamic row with %d columns, size %u\n", 
+           table_def->num_columns, source->data_size);
+    
+    // Simple copy since we're already using a packed memory layout
+    memcpy(destination, source->data, source->data_size);
+    
+    // Debug: Print the first few bytes after serialization
+    printf("DEBUG: First 10 bytes after serialization: ");
+    for (uint32_t i = 0; i < 10 && i < source->data_size; i++) {
+        printf("%02x ", ((unsigned char*)destination)[i]);
+    }
+    printf("\n");
+}
+
+void deserialize_dynamic_row(void* source, TableDef* table_def, DynamicRow* destination) {
+    // Make sure destination has a buffer allocated
+    if (destination->data == NULL) {
+        dynamic_row_init(destination, table_def);
+    }
+    
+    printf("DEBUG: Deserializing dynamic row with %d columns, size %u\n", 
+           table_def->num_columns, destination->data_size);
+    
+    // Simple copy since we're using a packed memory layout
+    memcpy(destination->data, source, destination->data_size);
+    
+    // Debug: Print the first few bytes after deserialization
+    printf("DEBUG: First 10 bytes after deserialization: ");
+    for (uint32_t i = 0; i < 10 && i < destination->data_size; i++) {
+        printf("%02x ", ((unsigned char*)destination->data)[i]);
+    }
+    printf("\n");
+    
+    // Debug: Check if string columns are properly terminated
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        if (table_def->columns[i].type == COLUMN_TYPE_STRING) {
+            uint32_t offset = get_column_offset(table_def, i);
+            char* str = (char*)destination->data + offset;
+            
+            // Make sure string is null-terminated somewhere in its allocated space
+            bool found_null = false;
+            for (uint32_t j = 0; j < table_def->columns[i].size && offset + j < destination->data_size; j++) {
+                if (str[j] == '\0') {
+                    found_null = true;
+                    break;
+                }
+            }
+            
+            if (!found_null && offset < destination->data_size) {
+                // Force null termination at the end of the string's allocated space
+                uint32_t max_pos = (offset + table_def->columns[i].size - 1 < destination->data_size) ? 
+                                   table_def->columns[i].size - 1 : destination->data_size - offset - 1;
+                str[max_pos] = '\0';
+                printf("WARNING: Fixed missing null terminator in column %s during deserialization\n", 
+                       table_def->columns[i].name);
+            }
+            
+            printf("DEBUG: Column %s (idx=%d) string value after deserialize: '%s'\n", 
+                   table_def->columns[i].name, i, str);
+        }
+    }
+}
+
+void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
+    printf("(");
+    
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        ColumnDef* col = &table_def->columns[i];
+        
+        if (i > 0) {
+            printf(", ");
+        }
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                printf("%d", dynamic_row_get_int(row, table_def, i));
+                break;
+            case COLUMN_TYPE_FLOAT:
+                printf("%f", dynamic_row_get_float(row, table_def, i));
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                printf("%s", dynamic_row_get_boolean(row, table_def, i) ? "TRUE" : "FALSE");
+                break;
+            case COLUMN_TYPE_DATE:
+                printf("DATE(%d)", dynamic_row_get_date(row, table_def, i));
+                break;
+            case COLUMN_TYPE_TIME:
+                printf("TIME(%d)", dynamic_row_get_time(row, table_def, i));
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                printf("TIMESTAMP(%lld)", (long long)dynamic_row_get_timestamp(row, table_def, i));
+                break;
+            case COLUMN_TYPE_STRING: {
+                char* str = dynamic_row_get_string(row, table_def, i);
+                if (str) {
+                    printf("%s", str);
+                } else {
+                    printf("(null)");
+                }
+                break;
+            }
+            case COLUMN_TYPE_BLOB: {
+                uint32_t size;
+                void* blob = dynamic_row_get_blob(row, table_def, i, &size);
+                (void)blob; // Avoid unused variable warning
+                printf("<BLOB(%u bytes)>", size);
+                break;
+            }
+        }
+    }
+    
+    printf(")\n");
 }

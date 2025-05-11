@@ -3,6 +3,8 @@
 
 #include "input_handling.h"
 #include "table.h"
+#include "catalog.h"
+#include "database.h"
 
 typedef enum
 {
@@ -33,7 +35,12 @@ typedef enum
   STATEMENT_SELECT,
   STATEMENT_SELECT_BY_ID,
   STATEMENT_UPDATE,
-  STATEMENT_DELETEZ
+  STATEMENT_DELETE,
+  STATEMENT_CREATE_TABLE,
+  STATEMENT_USE_TABLE,
+  STATEMENT_SHOW_TABLES,
+  STATEMENT_CREATE_DATABASE,
+  STATEMENT_USE_DATABASE
 } StatementType;
 
 typedef struct
@@ -43,15 +50,53 @@ typedef struct
   uint32_t id_to_select;
   uint32_t id_to_update;
   uint32_t id_to_delete;
+  
+  // Fields for update operation
+  char column_to_update[MAX_COLUMN_NAME];
+  char update_value[COLUMN_EMAIL_SIZE]; // Using email size as it's larger
+  
+  // New fields for table operations
+  char table_name[MAX_TABLE_NAME];
+  ColumnDef columns[MAX_COLUMNS];
+  uint32_t num_columns;
+  
+  // New fields for variable-column insert values
+  char** values;
+  uint32_t num_values;
+  
+  // Fields for database operations
+  char database_name[256];
+  
+  // Reference to the database - needed for schema lookup
+  Database *db;
 } Statement;
-/*** Printing start ***/
-void print_constants();
-void indent(uint32_t level);
-void print_tree(Pager *pager, uint32_t page_num, uint32_t indentation_level);
-/*** Printing end ***/
-MetaCommandResult do_meta_command(Input_Buffer *buf, Table *table);
-PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
+
+// Meta command function
+MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db);
+
+// Prepare statement functions
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);
-ExecuteResult execute_statement(Statement *statement, Table *table);
+PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_create_table(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_use_table(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_show_tables(Input_Buffer *buf, Statement *statement);
+
+// Database statement functions
+PrepareResult prepare_database_statement(Input_Buffer *buf, Statement *statement);
+
+// Execute statement functions
+ExecuteResult execute_statement(Statement *statement, Database *db);
+ExecuteResult execute_insert(Statement *statement, Table *table);
+ExecuteResult execute_select(Statement *statement, Table *table);
+ExecuteResult execute_select_by_id(Statement *statement, Table *table);
+ExecuteResult execute_update(Statement *statement, Table *table);
+ExecuteResult execute_delete(Statement *statement, Table *table);
+ExecuteResult execute_create_table(Statement* statement, Database* db);
+ExecuteResult execute_use_table(Statement* statement, Database* db);
+ExecuteResult execute_show_tables(Statement* statement, Database* db);
+ExecuteResult execute_database_statement(Statement *statement, Database **db);
+
+// Utility functions
+void print_constants();
 
 #endif

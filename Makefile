@@ -8,7 +8,7 @@ OBJECTS = $(SOURCES:%.c=$(OBJ_DIR)/%.o)
 EXECUTABLE = $(BIN_DIR)/db-project
 
 all: $(EXECUTABLE)
-
+	@mkdir -p Database
 $(EXECUTABLE): $(OBJECTS)
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(OBJECTS) -o $@
@@ -16,10 +16,10 @@ $(EXECUTABLE): $(OBJECTS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+	
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache test.db
-
+	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache *.db Database
 test:
 	# -vv for verbose output
 	python3 -m pytest -vv test_db.py

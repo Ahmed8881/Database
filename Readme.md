@@ -8,14 +8,16 @@ The **Database Project** is a lightweight, command-line-based database engine im
 
 ## Features
 
-- **Insert Records:** Add new entries to the database.
-- **Select Records:** Retrieve and display stored data.
-- **Select Records by ID:** Retrieve and display a specific record by its ID.
-- **Update Records:** Modify existing entries in the database.
-- **Delete Records:** Remove entries from the database.
-- **B-Tree Indexing:** Efficient data organization and retrieval using B-Trees.
-- **Command-Line Interface:** Interactive shell for executing SQL-like commands.
-- **Meta-Commands:** Special commands prefixed with `.` for additional functionalities like viewing the B-Tree structure and application constants.
+- **Multi-Database Support:** Create and manage multiple databases
+- **Table Management:** Create tables with various data types
+- **Insert Records:** Add new entries to the database
+- **Select Records:** Retrieve and display stored data
+- **Select Records by ID:** Retrieve and display a specific record by its ID
+- **Update Records:** Modify existing entries in the database
+- **Delete Records:** Remove entries from the database
+- **B-Tree Indexing:** Efficient data organization and retrieval using B-Trees
+- **Command-Line Interface:** Interactive shell for executing SQL-like commands
+- **Meta-Commands:** Special commands prefixed with `.` for additional functionalities like viewing the B-Tree structure and application constants
 
 ---
 
@@ -23,11 +25,9 @@ The **Database Project** is a lightweight, command-line-based database engine im
 
 ### Prerequisites
 
-Ensure you have the following tools installed on your system:
-
-- **GCC (GNU Compiler Collection):** For compiling the source code.
-- **Make:** For build automation.
-- **Python 3:** Required for running the test scripts.
+- C compiler (GCC recommended)
+- Make
+- Unix-like environment (Linux, macOS, or WSL on Windows)
 
 ### Installation
 
@@ -58,16 +58,10 @@ Ensure you have the following tools installed on your system:
 
 4. **Run the Application:**
 
-   Execute the compiled binary, specifying a database file. If the file does not exist, it will be created.
+   Execute the compiled binary:
 
    ```sh
-   ./bin/db-project <database_file>
-   ```
-
-   _Example:_
-
-   ```sh
-   ./bin/db-project test.db
+   ./bin/db-project
    ```
 
 ---
@@ -76,135 +70,184 @@ Ensure you have the following tools installed on your system:
 
 Upon running the application, you'll enter an interactive shell where you can execute SQL-like commands and meta-commands.
 
-### Supported SQL Commands
+### Database Management Commands
 
-The database currently supports a subset of SQL commands:
+- **Create a Database:**
+
+  ```sql
+  CREATE DATABASE database_name
+  ```
+
+  Example:
+  ```sql
+  CREATE DATABASE school
+  ```
+
+- **Use a Database:**
+
+  ```sql
+  USE DATABASE database_name
+  ```
+
+  Example:
+  ```sql
+  USE DATABASE school
+  ```
+
+### Table Management Commands
+
+- **Create a Table:**
+
+  ```sql
+  CREATE TABLE table_name (column1 type1, column2 type2, ...)
+  ```
+
+  Supported column types:
+  - `INT` - Integer values
+  - `STRING(n)` - Text of length n (default 255)
+  - `FLOAT` - Floating point values
+  - `BOOLEAN` - True/False values
+  - `DATE` - Date values
+  - `TIME` - Time values
+  - `TIMESTAMP` - Combined date and time values
+  - `BLOB(n)` - Binary data of size n (default 1024)
+
+  Example:
+  ```sql
+  CREATE TABLE students (id INT, name STRING(50), gpa FLOAT)
+  ```
+
+- **Use a Table:**
+
+  ```sql
+  USE TABLE table_name
+  ```
+
+  Example:
+  ```sql
+  USE TABLE students
+  ```
+
+- **Show Tables:**
+
+  ```sql
+  SHOW TABLES
+  ```
+
+### Data Manipulation Commands
 
 - **Insert Data:**
 
   ```sql
-  insert <id> <username> <email>
+  INSERT INTO table_name VALUES (value1, value2, ...)
   ```
 
-  - **`<id>`:** A positive integer representing the user's ID.
-  - **`<username>`:** A string up to 32 characters.
-  - **`<email>`:** A string up to 255 characters.
-
-  _Example:_
-
+  Example:
   ```sql
-  insert 1 alice alice@example.com
+  INSERT INTO students VALUES (1, "Alice", 3.8)
   ```
 
-- **Select Data:**
+  For string values, you can use either single or double quotes.
+
+- **Select All Data:**
 
   ```sql
-  select
+  SELECT * FROM table_name
   ```
 
-  - Retrieves and displays all records in the database.
-
-  _Example:_
-
+  Example:
   ```sql
-  select
+  SELECT * FROM students
   ```
 
 - **Select Data by ID:**
 
   ```sql
-  select where id = <id>
+  SELECT * FROM table_name WHERE id = <id>
   ```
 
-  - Retrieves and displays the record with the specified ID.
-
-  _Example:_
-
+  Example:
   ```sql
-  select where id = 1
+  SELECT * FROM students WHERE id = 1
   ```
 
 - **Update Data:**
 
   ```sql
-  update <id> <field> <value>
+  UPDATE table_name SET column = value WHERE id = <id>
   ```
 
-  - Updates the specified field of the record with the given ID.
-
-  _Example:_
+  Example:
+  ```sql
+  UPDATE students SET name = "Alicia" WHERE id = 1
+  ```
 
   ```sql
-  update 1 username alice_new
+  UPDATE students SET gpa = 4.0 WHERE id = 1
   ```
 
 - **Delete Data:**
 
   ```sql
-  delete where id = <id>
+  DELETE FROM table_name WHERE id = <id>
   ```
 
-  - Deletes the record with the specified ID.
-
-  _Example:_
-
+  Example:
   ```sql
-  delete where id = 1
+  DELETE FROM students WHERE id = 1
   ```
 
-### Supported Meta-Commands
+### Meta-Commands
 
-Meta-commands provide additional functionalities and are prefixed with a dot (`.`).
+- **Exit the Application:**
 
-- **Exit Application:**
-
-  ```sh
+  ```
   .exit
   ```
 
-  - Safely closes the database and exits the application.
-
 - **View B-Tree Structure:**
 
-  ```sh
+  ```
   .btree
   ```
 
-  - Displays the current structure of the B-Tree, showing internal and leaf nodes with their respective keys.
+- **View Constants:**
 
-- **View Application Constants:**
-
-  ```sh
+  ```
   .constants
   ```
-
-  - Prints out various constants used within the application, such as sizes and offsets related to node structures.
-
-_Note:_ Entering an unrecognized meta-command will result in an error message.
 
 ### Example Session
 
 ```sh
-db > insert 1 alice alice@example.com
+db > CREATE DATABASE school
 Executed.
-db > insert 2 bob bob@example.com
+db > USE DATABASE school
 Executed.
-db > select
-(1, alice, alice@example.com)
-(2, bob, bob@example.com)
+db > CREATE TABLE students (id INT, name STRING(50), gpa FLOAT)
 Executed.
-db > select where id = 1
-(1, alice, alice@example.com)
+db > USE TABLE students
 Executed.
-db > update 1 username alice_new
+db > INSERT INTO students VALUES (1, "Alice", 3.8)
 Executed.
-db > select where id = 1
-(1, alice_new, alice@example.com)
+db > INSERT INTO students VALUES (2, "Bob", 3.5)
 Executed.
-db > delete where id = 1
+db > SELECT * FROM students
+(1, Alice, 3.8)
+(2, Bob, 3.5)
 Executed.
-db > select
-(2, bob, bob@example.com)
+db > SELECT * FROM students WHERE id = 1
+(1, Alice, 3.8)
+Executed.
+db > UPDATE students SET name = "Alicia" WHERE id = 1
+Executed.
+db > SELECT * FROM students WHERE id = 1
+(1, Alicia, 3.8)
+Executed.
+db > DELETE FROM students WHERE id = 1
+Executed.
+db > SELECT * FROM students
+(2, Bob, 3.5)
 Executed.
 db > .btree
 Tree:
@@ -234,6 +277,11 @@ The project files are organized as follows:
 
 ```
 Database/
+├── Database/
+|   ├── Database_name            # Database storage directory
+|       ├── Tables               # Tables storage directory
+|           ├── .tbl files
+|       ├── .catalog files       # for storing information about tables
 ├── include/                     # Header files for the C source code
 │   ├── btree.h
 │   ├── command_processor.h
@@ -242,7 +290,10 @@ Database/
 │   ├── pager.h
 │   ├── queue.h
 │   ├── stack.h
-│   └── table.h
+│   ├── table.h
+|   ├── utils.h
+|   ├── data_utils.h
+|   └── table.h
 ├── src/                         # C source files
 │   ├── btree.c
 │   ├── command_processor.c
