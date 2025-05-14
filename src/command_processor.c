@@ -491,34 +491,44 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
     // Set the primary key (assuming first column is the key)
     if (table_def->num_columns > 0 && table_def->columns[0].type == COLUMN_TYPE_INT) {
       dynamic_row_set_int(&row, table_def, 0, key_to_insert);
+      #ifdef DEBUG
       printf("DEBUG: Set primary key %d using legacy approach\n", key_to_insert);
+      #endif
     }
     
     // Fill in other column values if they exist
     if (table_def->num_columns > 1) {
       if (table_def->columns[1].type == COLUMN_TYPE_STRING) {
         dynamic_row_set_string(&row, table_def, 1, statement->row_to_insert.username);
+        #ifdef DEBUG
         printf("DEBUG: Set column 1 to '%s' using legacy approach\n", statement->row_to_insert.username);
+        #endif
       }
     }
     
     if (table_def->num_columns > 2) {
       if (table_def->columns[2].type == COLUMN_TYPE_STRING) {
         dynamic_row_set_string(&row, table_def, 2, statement->row_to_insert.email);
+        #ifdef DEBUG
         printf("DEBUG: Set column 2 to '%s' using legacy approach\n", statement->row_to_insert.email);
+        #endif
       }
     }
   } else {
     // Use the new values array for more flexible column handling
     key_to_insert = atoi(statement->values[0]);
+    #ifdef DEBUG
     printf("DEBUG: Inserting new row with %d columns\n", statement->num_values);
+    #endif
     
     // Set values for each column
     for (uint32_t i = 0; i < table_def->num_columns && i < statement->num_values; i++) {
       ColumnDef* col = &table_def->columns[i];
       char* value = statement->values[i];
       
+      #ifdef DEBUG
       printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name, value);
+      #endif
       
       switch (col->type) {
         case COLUMN_TYPE_INT:
@@ -537,15 +547,19 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
         // Add other cases as needed
         default:
           // For now, just skip unsupported types
+          #ifdef DEBUG
           printf("DEBUG: Unsupported type for column %d\n", i);
+          #endif
           break;
       }
     }
   }
   
   // Debug print: Show what we're about to insert
+  #ifdef DEBUG
   printf("Inserting row with key: %d\n", key_to_insert);
   print_dynamic_row(&row, table_def); // Add this to see the row content before insertion
+  #endif
   
   Cursor *cursor = table_find(table, key_to_insert);
   if (!cursor) {
@@ -604,7 +618,9 @@ ExecuteResult execute_select(Statement *statement, Table *table)
     return EXECUTE_UNRECOGNIZED_STATEMENT;
   }
   
+  #ifdef DEBUG
   printf("DEBUG: Selecting from table with %d columns\n", table_def->num_columns);
+  #endif
   
   Cursor *cursor = table_start(table);
   DynamicRow row;
@@ -836,7 +852,10 @@ PrepareResult prepare_create_table(Input_Buffer* buf, Statement* statement) {
             }
             
             // No need to add space for null terminator - this is handled in dynamic_row_init
+            
+            #ifdef DEBUG
             printf("DEBUG: Set string column '%s' size to %u\n", column->name, column->size);
+            #endif
         } else {
             return PREPARE_SYNTAX_ERROR;
         }
