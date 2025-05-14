@@ -1,5 +1,11 @@
 CC = gcc
 CFLAGS = -Iinclude -Wall -Wextra -std=c11 -g
+# Debug flags
+ifdef DEBUG
+		CFLAGS += -DDEBUG -O0
+else
+		CFLAGS += -O2
+endif
 SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
@@ -16,7 +22,7 @@ $(EXECUTABLE): $(OBJECTS)
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
-	
+
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache *.db Database

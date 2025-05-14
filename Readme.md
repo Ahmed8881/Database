@@ -48,6 +48,13 @@ The **Database Project** is a lightweight, command-line-based database engine im
 
    - This command compiles the C source files and generates the executable at `bin/db-project`.
 
+   For a debug build with additional debug symbols and flags:
+
+   ```sh
+   make DEBUG=1
+   ```
+
+   - This compiles the code with debug flags (`-DDEBUG`, `-O0`) for easier troubleshooting.
 3. **Clean Build Artifacts (Optional):**
 
    To remove compiled objects and binaries, run:
@@ -400,6 +407,7 @@ For any questions, suggestions, or feedback, feel free to reach out to the proje
 - **Ahmed8881:** [GitHub Profile](https://github.com/Ahmed8881)
 - **hamidriaz1998:** [GitHub Profile](https://github.com/hamidriaz1998)
 - **abdulrehmansafdar:** [GitHub Profile](https://github.com/abdulrehmansafdar)
+- **SherMuhammad:** [Github Profile](https://github.com/shermuhammadgithub)
 
 ---
 
