@@ -799,7 +799,7 @@ void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
                 printf("%d", dynamic_row_get_int(row, table_def, i));
                 break;
             case COLUMN_TYPE_FLOAT:
-                printf("%f", dynamic_row_get_float(row, table_def, i));
+                printf("%.2f", dynamic_row_get_float(row, table_def, i));
                 break;
             case COLUMN_TYPE_BOOLEAN:
                 printf("%s", dynamic_row_get_boolean(row, table_def, i) ? "TRUE" : "FALSE");

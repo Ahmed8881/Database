@@ -305,8 +305,6 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
       
       return PREPARE_SUCCESS;
     } else {
-      // Old syntax: select or select where id = x
-      // Check if this is a select by ID query
       char* id_str = strstr(buf->buffer, "where id =");
       if (id_str) {
         statement->type = STATEMENT_SELECT_BY_ID;
@@ -321,7 +319,7 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
   else if (strncasecmp(buf->buffer, "update", 6) == 0) {
     statement->type = STATEMENT_UPDATE;
     
-    // New SQL-like syntax: UPDATE table_name SET column = value WHERE id = X
+    // SQL-like syntax: UPDATE table_name SET column = value WHERE id = X
     char *sql = buf->buffer;
     char *table_start = sql + 6; // Skip "update"
     while (*table_start == ' ') table_start++; // Skip spaces

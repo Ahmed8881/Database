@@ -62,3 +62,5 @@ __pycache__/
 *.db
 .vscode/c_cpp_properties.json
 .pytest_cache
+
+Database/
