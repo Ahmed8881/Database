@@ -11,7 +11,7 @@ bool queue_enqueue(Queue* queue, void* data, uint32_t page_num, uint32_t level) 
     QueueNode* new_node = (QueueNode*)malloc(sizeof(QueueNode));
     if (new_node == NULL) {
         return false;
-    }Z
+    }
     new_node->data = data;
     new_node->page_num = page_num;
     new_node->level = level;
