@@ -89,4 +89,5 @@ void dynamic_row_free(DynamicRow* row);
 void serialize_dynamic_row(DynamicRow* source, TableDef* table_def, void* destination);
 void deserialize_dynamic_row(void* source, TableDef* table_def, DynamicRow* destination);
 void print_dynamic_row(DynamicRow* row, TableDef* table_def);
+void print_dynamic_column(DynamicRow* row, TableDef* table_def, uint32_t col_idx);
 #endif

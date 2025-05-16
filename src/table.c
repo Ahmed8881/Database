@@ -834,3 +834,42 @@ void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
     
     printf(")\n");
 }
+
+void print_dynamic_column(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+    if (col_idx >= table_def->num_columns) {
+        printf("ERROR");
+        return;
+    }
+    
+    ColumnDef* col = &table_def->columns[col_idx];
+    
+    switch (col->type) {
+        case COLUMN_TYPE_INT:
+            printf("%d", dynamic_row_get_int(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_STRING:
+            printf("%s", dynamic_row_get_string(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_FLOAT:
+            printf("%.2f", dynamic_row_get_float(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_BOOLEAN:
+            printf("%s", dynamic_row_get_boolean(row, table_def, col_idx) ? "true" : "false");
+            break;
+        case COLUMN_TYPE_DATE:
+            printf("%d", dynamic_row_get_date(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_TIME:
+            printf("%d", dynamic_row_get_time(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_TIMESTAMP:
+            printf("%ld", dynamic_row_get_timestamp(row, table_def, col_idx));
+            break;
+        case COLUMN_TYPE_BLOB:
+            printf("[BLOB]");
+            break;
+        default:
+            printf("?");
+            break;
+    }
+}

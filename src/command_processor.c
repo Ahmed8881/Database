@@ -2,13 +2,13 @@
 #include "../include/btree.h"
 #include "../include/cursor.h"
 #include "../include/utils.h"
-#include <stdlib.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
-void print_constants()
-{
+void print_constants() {
   printf("ROW_SIZE: %d\n", ROW_SIZE);
   printf("COMMON_NODE_HEADER_SIZE: %lu\n", COMMON_NODE_HEADER_SIZE);
   printf("LEAF_NODE_HEADER_SIZE: %lu\n", LEAF_NODE_HEADER_SIZE);
@@ -17,182 +17,192 @@ void print_constants()
   printf("LEAF_NODE_MAX_CELLS: %lu\n", LEAF_NODE_MAX_CELLS);
 }
 
-void indent(uint32_t level)
-{
-  for (uint32_t i = 0; i < level; i++)
-  {
+void indent(uint32_t level) {
+  for (uint32_t i = 0; i < level; i++) {
     printf("  ");
   }
 }
 
 // Meta command implementation
 MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db) {
-    if (strcmp(buf->buffer, ".exit") == 0) {
-        db_close_database(db);
-        exit(EXIT_SUCCESS);
-    } else if (strncmp(buf->buffer, ".btree", 6) == 0) {
-        // Check if a specific table name is provided
-        char table_name[MAX_TABLE_NAME] = {0};
-        int args = sscanf(buf->buffer, ".btree %s", table_name);
-        
-        if (args == 1 && table_name[0] != '\0') {
-            // Show B-tree for specific table
-            int table_idx = catalog_find_table(&db->catalog, table_name);
-            if (table_idx == -1) {
-                printf("Error: Table '%s' not found.\n", table_name);
-                return META_COMMAND_SUCCESS;
-            }
-            
-            // Open the table temporarily if it's not the active one
-            Table *table_to_show = NULL;
-            bool temp_table = false;
-            
-            if (db->active_table && strcmp(db->catalog.tables[db->catalog.active_table].name, table_name) == 0) {
-                // Use existing active table
-                table_to_show = db->active_table;
-            } else {
-                // Open the table temporarily
-                table_to_show = db_open(db->catalog.tables[table_idx].filename);
-                table_to_show->root_page_num = db->catalog.tables[table_idx].root_page_num;
-                temp_table = true;
-            }
-            
-            printf("Tree for table '%s':\n", table_name);
-            print_tree(table_to_show->pager, table_to_show->root_page_num, 0);
-            
-            // Close the temporary table if we created one
-            if (temp_table) {
-                db_close(table_to_show);
-            }
-        } else {
-            // Show B-tree for active table (original behavior)
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return META_COMMAND_SUCCESS;
-            }
-            
-            TableDef* active_table_def = catalog_get_active_table(&db->catalog);
-            printf("Tree for active table '%s':\n", active_table_def->name);
-            print_tree(db->active_table->pager, db->active_table->root_page_num, 0);
-        }
-        
+  if (strcmp(buf->buffer, ".exit") == 0) {
+    db_close_database(db);
+    exit(EXIT_SUCCESS);
+  } else if (strncmp(buf->buffer, ".btree", 6) == 0) {
+    // Check if a specific table name is provided
+    char table_name[MAX_TABLE_NAME] = {0};
+    int args = sscanf(buf->buffer, ".btree %s", table_name);
+
+    if (args == 1 && table_name[0] != '\0') {
+      // Show B-tree for specific table
+      int table_idx = catalog_find_table(&db->catalog, table_name);
+      if (table_idx == -1) {
+        printf("Error: Table '%s' not found.\n", table_name);
         return META_COMMAND_SUCCESS;
-    } else if (strcmp(buf->buffer, ".constants") == 0) {
-        printf("Constants:\n");
-        print_constants();
+      }
+
+      // Open the table temporarily if it's not the active one
+      Table *table_to_show = NULL;
+      bool temp_table = false;
+
+      if (db->active_table &&
+          strcmp(db->catalog.tables[db->catalog.active_table].name,
+                 table_name) == 0) {
+        // Use existing active table
+        table_to_show = db->active_table;
+      } else {
+        // Open the table temporarily
+        table_to_show = db_open(db->catalog.tables[table_idx].filename);
+        table_to_show->root_page_num =
+            db->catalog.tables[table_idx].root_page_num;
+        temp_table = true;
+      }
+
+      printf("Tree for table '%s':\n", table_name);
+      print_tree(table_to_show->pager, table_to_show->root_page_num, 0);
+
+      // Close the temporary table if we created one
+      if (temp_table) {
+        db_close(table_to_show);
+      }
+    } else {
+      // Show B-tree for active table (original behavior)
+      if (db->active_table == NULL) {
+        printf("Error: No active table selected.\n");
         return META_COMMAND_SUCCESS;
+      }
+
+      TableDef *active_table_def = catalog_get_active_table(&db->catalog);
+      printf("Tree for active table '%s':\n", active_table_def->name);
+      print_tree(db->active_table->pager, db->active_table->root_page_num, 0);
     }
-    
-    return META_COMMAND_UNRECOGNIZED_COMMAND;
+
+    return META_COMMAND_SUCCESS;
+  } else if (strcmp(buf->buffer, ".constants") == 0) {
+    printf("Constants:\n");
+    print_constants();
+    return META_COMMAND_SUCCESS;
+  }
+
+  return META_COMMAND_UNRECOGNIZED_COMMAND;
 }
 
-PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
-{
+PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement) {
   statement->type = STATEMENT_INSERT;
-  
+
   char *sql = buf->buffer;
-  
+
   // Check for "INSERT INTO table_name VALUES (values...)" syntax
   char *into_keyword = strcasestr(sql, "into");
   char *values_keyword = strcasestr(sql, "values");
-  
+
   if (into_keyword && values_keyword) {
     // New syntax: INSERT INTO table_name VALUES (1, "name", etc)
     char table_name[MAX_TABLE_NAME];
-    
+
     // Extract table name between "into" and "values"
     int table_name_start = (into_keyword - sql) + 4; // Skip "into"
-    while (sql[table_name_start] == ' ') table_name_start++; // Skip spaces
-    
+    while (sql[table_name_start] == ' ')
+      table_name_start++; // Skip spaces
+
     int table_name_end = (values_keyword - sql);
-    while (sql[table_name_end-1] == ' ') table_name_end--; // Trim trailing spaces
-    
+    while (sql[table_name_end - 1] == ' ')
+      table_name_end--; // Trim trailing spaces
+
     int table_name_len = table_name_end - table_name_start;
     if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     strncpy(table_name, sql + table_name_start, table_name_len);
     table_name[table_name_len] = '\0';
-    
+
     // Store table name in statement
     strncpy(statement->table_name, table_name, MAX_TABLE_NAME - 1);
     statement->table_name[MAX_TABLE_NAME - 1] = '\0';
-    
+
     // Now extract the values - find opening parenthesis after VALUES
     char *open_paren = strchr(values_keyword, '(');
     if (!open_paren) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     // Find closing parenthesis
     char *close_paren = strrchr(open_paren, ')');
     if (!close_paren) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     // This is where we'll store our values
     statement->num_values = 0;
     statement->values = NULL;
-    
+
     // Extract all values between parentheses
     char *value_str = open_paren + 1;
     while (value_str < close_paren && statement->num_values < MAX_COLUMNS) {
-      while (*value_str == ' ' || *value_str == '\t') value_str++; // Skip spaces
-      
-      if (value_str >= close_paren) break;
-      
+      while (*value_str == ' ' || *value_str == '\t')
+        value_str++; // Skip spaces
+
+      if (value_str >= close_paren)
+        break;
+
       // Allocate space for the new value
-      statement->values = realloc(statement->values, 
-                                (statement->num_values + 1) * sizeof(char*));
+      statement->values = realloc(statement->values,
+                                  (statement->num_values + 1) * sizeof(char *));
       if (!statement->values) {
         return PREPARE_SYNTAX_ERROR;
       }
-      
+
       // Handle quoted strings
       if (*value_str == '"' || *value_str == '\'') {
         char quote_char = *value_str;
         value_str++; // Skip opening quote
-        
+
         // Find closing quote
         char *end_quote = strchr(value_str, quote_char);
         if (!end_quote || end_quote >= close_paren) {
           return PREPARE_SYNTAX_ERROR;
         }
-        
+
         int value_len = end_quote - value_str;
         char *value = malloc(value_len + 1);
-        if (!value) return PREPARE_SYNTAX_ERROR;
-        
+        if (!value)
+          return PREPARE_SYNTAX_ERROR;
+
         strncpy(value, value_str, value_len);
         value[value_len] = '\0';
-        
+
         statement->values[statement->num_values++] = value;
         value_str = end_quote + 1;
       } else {
         // Handle non-quoted values (numbers, etc.)
         char *comma = strchr(value_str, ',');
-        if (!comma || comma > close_paren) comma = close_paren;
-        
+        if (!comma || comma > close_paren)
+          comma = close_paren;
+
         int value_len = comma - value_str;
-        while (value_len > 0 && (value_str[value_len-1] == ' ' || value_str[value_len-1] == '\t')) 
+        while (value_len > 0 && (value_str[value_len - 1] == ' ' ||
+                                 value_str[value_len - 1] == '\t'))
           value_len--; // Trim trailing spaces
-        
+
         char *value = malloc(value_len + 1);
-        if (!value) return PREPARE_SYNTAX_ERROR;
-        
+        if (!value)
+          return PREPARE_SYNTAX_ERROR;
+
         strncpy(value, value_str, value_len);
         value[value_len] = '\0';
-        
+
         statement->values[statement->num_values++] = value;
         value_str = comma;
       }
-      
+
       // Skip comma if present
-      if (*value_str == ',') value_str++;
+      if (*value_str == ',')
+        value_str++;
     }
-    
-    // For backward compatibility, still populate the old row_to_insert structure
+
+    // For backward compatibility, still populate the old row_to_insert
+    // structure
     if (statement->num_values >= 1) {
       statement->row_to_insert.id = atoi(statement->values[0]);
       // Check for negative ID - must check after conversion to int
@@ -204,27 +214,25 @@ PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
         return PREPARE_NEGATIVE_ID;
       }
     }
-    
+
     if (statement->num_values >= 2) {
-      strncpy(statement->row_to_insert.username, 
-              statement->values[1], 
+      strncpy(statement->row_to_insert.username, statement->values[1],
               COLUMN_USERNAME_SIZE);
       statement->row_to_insert.username[COLUMN_USERNAME_SIZE] = '\0';
     }
-    
+
     if (statement->num_values >= 3) {
-      strncpy(statement->row_to_insert.email, 
-              statement->values[2], 
+      strncpy(statement->row_to_insert.email, statement->values[2],
               COLUMN_EMAIL_SIZE);
       statement->row_to_insert.email[COLUMN_EMAIL_SIZE] = '\0';
     }
-    
+
     return PREPARE_SUCCESS;
   } else {
     // Old syntax: insert 1 username email
     // Use the existing implementation
-    char *id_string = strtok(buf->buffer, " ");  // Will get "insert"
-    id_string = strtok(NULL, " ");  // Get the actual ID
+    char *id_string = strtok(buf->buffer, " "); // Will get "insert"
+    id_string = strtok(NULL, " ");              // Get the actual ID
     char *username = strtok(NULL, " ");
     char *email = strtok(NULL, " ");
 
@@ -236,11 +244,11 @@ PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
     if (id < 0) {
       return PREPARE_NEGATIVE_ID;
     }
-    
+
     if (strlen(username) > COLUMN_USERNAME_SIZE) {
       return PREPARE_STRING_TOO_LONG;
     }
-    
+
     if (strlen(email) > COLUMN_EMAIL_SIZE) {
       return PREPARE_STRING_TOO_LONG;
     }
@@ -248,123 +256,79 @@ PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
     statement->row_to_insert.id = id;
     strcpy(statement->row_to_insert.username, username);
     strcpy(statement->row_to_insert.email, email);
-    
+
     return PREPARE_SUCCESS;
   }
 }
 
-PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
-{
+PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement) {
   // Initialize table name as empty
   statement->table_name[0] = '\0';
-  
+
+  // Initialize columns to select
+  statement->columns_to_select = NULL;
+  statement->num_columns_to_select = 0;
+  statement->has_where_clause = false;
+
   if (strncasecmp(buf->buffer, "insert", 6) == 0) {
     return prepare_insert(buf, statement);
-  }
-  else if (strncasecmp(buf->buffer, "select", 6) == 0) {
-    // Check for "SELECT * FROM table_name" syntax
-    char *from_keyword = strcasestr(buf->buffer, "from");
-    
-    if (from_keyword) {
-      // New syntax: SELECT * FROM table_name [WHERE id = x]
-      statement->type = STATEMENT_SELECT;
-      
-      // Extract table name after FROM
-      char *table_start = from_keyword + 4; // Skip "from"
-      while (*table_start == ' ') table_start++; // Skip spaces
-      
-      // Find end of table name (space or end of string)
-      char *table_end = table_start;
-      while (*table_end && *table_end != ' ' && *table_end != '\0') table_end++;
-      
-      int table_name_len = table_end - table_start;
-      if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME) {
-        return PREPARE_SYNTAX_ERROR;
-      }
-      
-      // Store table name in statement
-      strncpy(statement->table_name, table_start, table_name_len);
-      statement->table_name[table_name_len] = '\0';
-      
-      // Check for WHERE clause
-      char *where_keyword = strcasestr(table_end, "where");
-      if (where_keyword) {
-        statement->type = STATEMENT_SELECT_BY_ID;
-        
-        // Parse id after "where id ="
-        char *id_str = strstr(where_keyword, "id =");
-        if (id_str) {
-          id_str += 4; // Skip "id ="
-          while (*id_str == ' ') id_str++; // Skip spaces
-          statement->id_to_select = atoi(id_str);
-          return PREPARE_SUCCESS;
-        } else {
-          return PREPARE_SYNTAX_ERROR;
-        }
-      }
-      
-      return PREPARE_SUCCESS;
-    } else {
-      char* id_str = strstr(buf->buffer, "where id =");
-      if (id_str) {
-        statement->type = STATEMENT_SELECT_BY_ID;
-        statement->id_to_select = atoi(id_str + 10);
-        return PREPARE_SUCCESS;
-      } else {
-        statement->type = STATEMENT_SELECT;
-        return PREPARE_SUCCESS;
-      }
-    }
-  }
-  else if (strncasecmp(buf->buffer, "update", 6) == 0) {
+  } else if (strncasecmp(buf->buffer, "select", 6) == 0) {
+    return prepare_select(buf, statement);
+  } else if (strncasecmp(buf->buffer, "update", 6) == 0) {
     statement->type = STATEMENT_UPDATE;
-    
+
     // SQL-like syntax: UPDATE table_name SET column = value WHERE id = X
     char *sql = buf->buffer;
     char *table_start = sql + 6; // Skip "update"
-    while (*table_start == ' ') table_start++; // Skip spaces
-    
+    while (*table_start == ' ')
+      table_start++; // Skip spaces
+
     // Find table name end (space before SET)
     char *table_end = strcasestr(table_start, "set");
     if (!table_end) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     // Extract table name
     int table_name_len = table_end - table_start;
-    while (table_start[table_name_len-1] == ' ') table_name_len--; // Trim trailing spaces
-    
+    while (table_start[table_name_len - 1] == ' ')
+      table_name_len--; // Trim trailing spaces
+
     if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     strncpy(statement->table_name, table_start, table_name_len);
     statement->table_name[table_name_len] = '\0';
-    
+
     // Find column name and value
     char *column_start = table_end + 3; // Skip "set"
-    while (*column_start == ' ') column_start++; // Skip spaces
-    
+    while (*column_start == ' ')
+      column_start++; // Skip spaces
+
     char *equals_pos = strchr(column_start, '=');
     if (!equals_pos) {
       return PREPARE_SYNTAX_ERROR;
     }
-    
+
     // Extract column name
     int column_name_len = equals_pos - column_start;
-    while (column_start[column_name_len-1] == ' ') column_name_len--; // Trim trailing spaces
-    
+    while (column_start[column_name_len - 1] == ' ')
+      column_name_len--; // Trim trailing spaces
+
     char column_name[MAX_COLUMN_NAME] = {0};
     strncpy(column_name, column_start, column_name_len);
     column_name[column_name_len] = '\0';
-    
+
     // Extract value (handling quotes)
     char *value_start = equals_pos + 1;
-    while (*value_start == ' ') value_start++; // Skip spaces
-    
+    while (*value_start == ' ')
+      value_start++; // Skip spaces
+
     char *value_end;
-    char update_value[COLUMN_EMAIL_SIZE] = {0}; // Using email size as it's larger
-    
+    char update_value[COLUMN_EMAIL_SIZE] = {
+        0}; // Using email size as it's larger
+
     if (*value_start == '"' || *value_start == '\'') {
       // Value is in quotes
       char quote_char = *value_start;
@@ -373,7 +337,7 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
       if (!value_end) {
         return PREPARE_SYNTAX_ERROR;
       }
-      
+
       int value_len = value_end - value_start;
       strncpy(update_value, value_start, value_len);
       update_value[value_len] = '\0';
@@ -383,57 +347,59 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
       if (!value_end) {
         value_end = value_start + strlen(value_start);
       }
-      
+
       int value_len = value_end - value_start;
-      while (value_start[value_len-1] == ' ') value_len--; // Trim trailing spaces
-      
+      while (value_start[value_len - 1] == ' ')
+        value_len--; // Trim trailing spaces
+
       strncpy(update_value, value_start, value_len);
       update_value[value_len] = '\0';
     }
-    
+
     // Save update info to statement
     strncpy(statement->column_to_update, column_name, MAX_COLUMN_NAME - 1);
     statement->column_to_update[MAX_COLUMN_NAME - 1] = '\0';
-    
+
     strncpy(statement->update_value, update_value, COLUMN_EMAIL_SIZE - 1);
     statement->update_value[COLUMN_EMAIL_SIZE - 1] = '\0';
-    
+
     // Find ID to update
-    char* id_str = strstr(buf->buffer, "where id =");
+    char *id_str = strstr(buf->buffer, "where id =");
     if (id_str) {
       statement->id_to_update = atoi(id_str + 10);
       return PREPARE_SUCCESS;
     } else {
       return PREPARE_SYNTAX_ERROR;
     }
-  }
-  else if (strncasecmp(buf->buffer, "delete", 6) == 0) {
+  } else if (strncasecmp(buf->buffer, "delete", 6) == 0) {
     statement->type = STATEMENT_DELETE;
-    
+
     // New SQL-like syntax: DELETE FROM table_name WHERE id = X
     char *sql = buf->buffer;
     char *from_keyword = strcasestr(sql, "from");
-    
+
     if (from_keyword) {
       // Extract table name
       char *table_start = from_keyword + 4; // Skip "from"
-      while (*table_start == ' ') table_start++; // Skip spaces
-      
+      while (*table_start == ' ')
+        table_start++; // Skip spaces
+
       char *table_end = strcasestr(table_start, "where");
       if (!table_end) {
         return PREPARE_SYNTAX_ERROR;
       }
-      
+
       int table_name_len = table_end - table_start;
-      while (table_start[table_name_len-1] == ' ') table_name_len--; // Trim trailing spaces
-      
+      while (table_start[table_name_len - 1] == ' ')
+        table_name_len--; // Trim trailing spaces
+
       if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME) {
         return PREPARE_SYNTAX_ERROR;
       }
-      
+
       strncpy(statement->table_name, table_start, table_name_len);
       statement->table_name[table_name_len] = '\0';
-      
+
       // Parse id in "where id = X"
       char *id_str = strstr(table_end, "id =");
       if (id_str) {
@@ -441,34 +407,219 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
         return PREPARE_SUCCESS;
       }
     }
-    
+
     // Fallback to old syntax
-    char* id_str = strstr(buf->buffer, "where id =");
+    char *id_str = strstr(buf->buffer, "where id =");
     if (id_str) {
       statement->id_to_delete = atoi(id_str + 10);
       return PREPARE_SUCCESS;
     }
-    
+
     return PREPARE_SYNTAX_ERROR;
   }
-  
+
   else if (strncasecmp(buf->buffer, "create table", 12) == 0) {
     return prepare_create_table(buf, statement);
-  }
-  else if (strncasecmp(buf->buffer, "use table", 9) == 0) {
+  } else if (strncasecmp(buf->buffer, "use table", 9) == 0) {
     return prepare_use_table(buf, statement);
-  }
-  else if (strncasecmp(buf->buffer, "show tables", 11) == 0) {
+  } else if (strncasecmp(buf->buffer, "show tables", 11) == 0) {
     return prepare_show_tables(buf, statement);
   }
-  
+
   return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-ExecuteResult execute_insert(Statement *statement, Table *table)
-{
+PrepareResult prepare_select(Input_Buffer *buf, Statement *statement) {
+  statement->type = STATEMENT_SELECT;
+  char *sql = buf->buffer;
+
+  // Find FROM keyword
+  char *from_keyword = strcasestr(sql, "from");
+  if (!from_keyword) {
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  // Extract columns to select
+  char *columns_part = sql + 6; // Skip 'select'
+  while (*columns_part == ' ')
+    columns_part++; // Skip spaces
+
+  int columns_len = from_keyword - columns_part;
+  while (columns_part[columns_len - 1] == ' ')
+    columns_len--; // Skip trailing spaces
+
+  // Handle column select
+  if (columns_len == 1 && columns_part[0] == '*') {
+    // Select all Columns
+    statement->columns_to_select = NULL;
+    statement->num_columns_to_select = 0;
+  } else {
+    // Parse specific columns
+    char columns_buffer[MAX_COLUMN_SIZE];
+    strncpy(columns_buffer, columns_part,
+            columns_len > (MAX_COLUMN_SIZE-1) ? (MAX_COLUMN_SIZE-1) : columns_len);
+    columns_buffer[columns_len > (MAX_COLUMN_SIZE-1) ? (MAX_COLUMN_SIZE-1) : columns_len] = '\0';
+
+    // Count commas to determine number of columns (commas + 1)
+    uint32_t num_columns = 1;
+    for (int i = 0; i < columns_len; i++) {
+      if (columns_buffer[i] == ',') {
+        num_columns++;
+      }
+    }
+
+    // Allocate memory for columns
+    statement->columns_to_select = malloc(num_columns * sizeof(char *));
+    if (!statement->columns_to_select) {
+      return PREPARE_SYNTAX_ERROR;
+    }
+
+    // Parse column names
+    char* column_start = columns_buffer;
+    uint32_t column_index = 0;
+    
+    for (int i = 0; i <= columns_len; i++) {
+      if (columns_buffer[i] == ',' || columns_buffer[i] == '\0') {
+        // Found a delimiter or end of string
+        columns_buffer[i] = '\0';  // Mark end of this column name
+        
+        // Trim leading and trailing spaces
+        char* column_name = column_start;
+        while (*column_name == ' ')
+          column_name++;
+          
+        char* end = column_name + strlen(column_name) - 1;
+        while (end > column_name && *end == ' ') {
+          *end = '\0';
+          end--;
+        }
+        
+        if (*column_name != '\0') {  // Skip empty column names
+          statement->columns_to_select[column_index] = my_strdup(column_name);
+          if (!statement->columns_to_select[column_index]) {
+            // Handle allocation failure
+            for (uint32_t j = 0; j < column_index; j++) {
+              free(statement->columns_to_select[j]);
+            }
+            free(statement->columns_to_select);
+            statement->columns_to_select = NULL;
+            return PREPARE_SYNTAX_ERROR;
+          }
+          column_index++;
+        }
+        
+        // Move to next column
+        column_start = &columns_buffer[i+1];
+      }
+    }
+    
+    statement->num_columns_to_select = column_index;
+    
+    // If no valid columns found, select all
+    if (statement->num_columns_to_select == 0) {
+      free(statement->columns_to_select);
+      statement->columns_to_select = NULL;
+      statement->num_columns_to_select = 0;
+    }
+  }
+
+  // Extract table name between 'from' and potential 'where'
+  char *table_start = from_keyword + 4; // Skip from
+  while (*table_start == ' ')
+    table_start++; // Skip spaces
+
+  // Find end of table name (space or end of string)
+  char *table_end = table_start;
+  while (*table_end && *table_end != ' ' && *table_end != '\0')
+    table_end++;
+
+  int table_name_len = table_end - table_start;
+  if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME) {
+    // No table name found
+    // Free allocated memory
+    free_columns_to_select(statement);
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  // Store table name
+  strncpy(statement->table_name, table_start, table_name_len);
+  statement->table_name[table_name_len] = '\0';
+
+  // Check for 'where' clause
+  char *where_keyword = strcasestr(table_end, "where");
+  if (where_keyword) {
+    statement->has_where_clause = true;
+
+    char *condition_start = where_keyword + 5; // Skip "where"
+    while (*condition_start == ' ')
+      condition_start++;
+
+    // parse condition in format "column = value"
+    char *equals_pos = strchr(condition_start, '=');
+    if (!equals_pos) {
+      free_columns_to_select(statement);
+      return PREPARE_SYNTAX_ERROR;
+    }
+
+    // Extract column name
+    int column_name_len = equals_pos - condition_start;
+    while (condition_start[column_name_len - 1] == ' ')
+      column_name_len--; // Trim trailing spaces
+    if (column_name_len <= 0 || column_name_len >= MAX_COLUMN_NAME) {
+      free_columns_to_select(statement);
+      return PREPARE_SYNTAX_ERROR;
+    }
+
+    strncpy(statement->where_column, condition_start, column_name_len);
+    statement->where_column[column_name_len] = '\0';
+
+    // Extract value
+    char *value_start = equals_pos + 1;
+    while (*value_start == ' ')
+      value_start++; // Skip spaces
+
+    // Handle quoted value
+    if (*value_start == '"' || *value_start == '\'') {
+      char quote_char = *value_start;
+      value_start++; // Skip opening quote
+
+      char *value_end = strchr(value_start, quote_char);
+      if (!value_end) {
+        free_columns_to_select(statement);
+        return PREPARE_SYNTAX_ERROR;
+      }
+
+      int value_len = value_end - value_start;
+      strncpy(statement->where_value, value_start, value_len);
+      statement->where_value[value_len] = '\0';
+    } else {
+      // Unquoted value - read until space or end of string
+      char *value_end = value_start;
+      while (*value_end && *value_end == ' ' && *value_end == '\0')
+        value_end++;
+
+      int value_len = value_end - value_start;
+      strncpy(statement->where_value, value_start, value_len);
+      statement->where_value[value_len] = '\0';
+    }
+  }
+  return PREPARE_SUCCESS;
+}
+
+void free_columns_to_select(Statement *statement) {
+  if (statement->columns_to_select) {
+    for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+      free(statement->columns_to_select[i]);
+    }
+    free(statement->columns_to_select);
+    statement->columns_to_select = NULL;
+    statement->num_columns_to_select = 0;
+  }
+}
+
+ExecuteResult execute_insert(Statement *statement, Table *table) {
   // Get active table definition from database catalog
-  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
   if (!table_def) {
     printf("Error: No active table definition found.\n");
     return EXECUTE_UNRECOGNIZED_STATEMENT;
@@ -480,85 +631,95 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
 
   // Get primary key from the first value
   uint32_t key_to_insert = 0;
-  
+
   // Check if we have values to insert
   if (!statement->values || statement->num_values == 0) {
     // Use the legacy row_to_insert approach for backward compatibility
     key_to_insert = statement->row_to_insert.id;
-    
+
     // Set the primary key (assuming first column is the key)
-    if (table_def->num_columns > 0 && table_def->columns[0].type == COLUMN_TYPE_INT) {
+    if (table_def->num_columns > 0 &&
+        table_def->columns[0].type == COLUMN_TYPE_INT) {
       dynamic_row_set_int(&row, table_def, 0, key_to_insert);
-      #ifdef DEBUG
-      printf("DEBUG: Set primary key %d using legacy approach\n", key_to_insert);
-      #endif
+#ifdef DEBUG
+      printf("DEBUG: Set primary key %d using legacy approach\n",
+             key_to_insert);
+#endif
     }
-    
+
     // Fill in other column values if they exist
     if (table_def->num_columns > 1) {
       if (table_def->columns[1].type == COLUMN_TYPE_STRING) {
-        dynamic_row_set_string(&row, table_def, 1, statement->row_to_insert.username);
-        #ifdef DEBUG
-        printf("DEBUG: Set column 1 to '%s' using legacy approach\n", statement->row_to_insert.username);
-        #endif
+        dynamic_row_set_string(&row, table_def, 1,
+                               statement->row_to_insert.username);
+#ifdef DEBUG
+        printf("DEBUG: Set column 1 to '%s' using legacy approach\n",
+               statement->row_to_insert.username);
+#endif
       }
     }
-    
+
     if (table_def->num_columns > 2) {
       if (table_def->columns[2].type == COLUMN_TYPE_STRING) {
-        dynamic_row_set_string(&row, table_def, 2, statement->row_to_insert.email);
-        #ifdef DEBUG
-        printf("DEBUG: Set column 2 to '%s' using legacy approach\n", statement->row_to_insert.email);
-        #endif
+        dynamic_row_set_string(&row, table_def, 2,
+                               statement->row_to_insert.email);
+#ifdef DEBUG
+        printf("DEBUG: Set column 2 to '%s' using legacy approach\n",
+               statement->row_to_insert.email);
+#endif
       }
     }
   } else {
     // Use the new values array for more flexible column handling
     key_to_insert = atoi(statement->values[0]);
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("DEBUG: Inserting new row with %d columns\n", statement->num_values);
-    #endif
-    
+#endif
+
     // Set values for each column
-    for (uint32_t i = 0; i < table_def->num_columns && i < statement->num_values; i++) {
-      ColumnDef* col = &table_def->columns[i];
-      char* value = statement->values[i];
-      
-      #ifdef DEBUG
-      printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name, value);
-      #endif
-      
+    for (uint32_t i = 0;
+         i < table_def->num_columns && i < statement->num_values; i++) {
+      ColumnDef *col = &table_def->columns[i];
+      char *value = statement->values[i];
+
+#ifdef DEBUG
+      printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name,
+             value);
+#endif
+
       switch (col->type) {
-        case COLUMN_TYPE_INT:
-          dynamic_row_set_int(&row, table_def, i, atoi(value));
-          break;
-        case COLUMN_TYPE_STRING:
-          dynamic_row_set_string(&row, table_def, i, value);
-          break;
-        case COLUMN_TYPE_FLOAT:
-          dynamic_row_set_float(&row, table_def, i, atof(value));
-          break;
-        case COLUMN_TYPE_BOOLEAN:
-          dynamic_row_set_boolean(&row, table_def, i, 
-              (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0));
-          break;
-        // Add other cases as needed
-        default:
-          // For now, just skip unsupported types
-          #ifdef DEBUG
-          printf("DEBUG: Unsupported type for column %d\n", i);
-          #endif
-          break;
+      case COLUMN_TYPE_INT:
+        dynamic_row_set_int(&row, table_def, i, atoi(value));
+        break;
+      case COLUMN_TYPE_STRING:
+        dynamic_row_set_string(&row, table_def, i, value);
+        break;
+      case COLUMN_TYPE_FLOAT:
+        dynamic_row_set_float(&row, table_def, i, atof(value));
+        break;
+      case COLUMN_TYPE_BOOLEAN:
+        dynamic_row_set_boolean(
+            &row, table_def, i,
+            (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0));
+        break;
+      // Add other cases as needed
+      default:
+// For now, just skip unsupported types
+#ifdef DEBUG
+        printf("DEBUG: Unsupported type for column %d\n", i);
+#endif
+        break;
       }
     }
   }
-  
-  // Debug print: Show what we're about to insert
-  #ifdef DEBUG
+
+// Debug print: Show what we're about to insert
+#ifdef DEBUG
   printf("Inserting row with key: %d\n", key_to_insert);
-  print_dynamic_row(&row, table_def); // Add this to see the row content before insertion
-  #endif
-  
+  print_dynamic_row(
+      &row, table_def); // Add this to see the row content before insertion
+#endif
+
   Cursor *cursor = table_find(table, key_to_insert);
   if (!cursor) {
     printf("Error: Failed to create cursor for insertion.\n");
@@ -568,12 +729,12 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
 
   // Handle duplicate key
   void *cur_node = get_page(table->pager, cursor->page_num);
-  if (cursor->cell_num < (*leaf_node_num_cells(cur_node)) && 
+  if (cursor->cell_num < (*leaf_node_num_cells(cur_node)) &&
       key_to_insert == *leaf_node_key(cur_node, cursor->cell_num)) {
     printf("Error: Duplicate key detected: %d\n", key_to_insert);
     dynamic_row_free(&row);
     free(cursor);
-    
+
     // Free the values array if it exists
     if (statement->values) {
       for (uint32_t i = 0; i < statement->num_values; i++) {
@@ -583,16 +744,16 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
       statement->values = NULL;
       statement->num_values = 0;
     }
-    
+
     return EXECUTE_DUPLICATE_KEY;
   }
 
   leaf_node_insert(cursor, key_to_insert, &row, table_def);
   printf("Row successfully inserted with key: %d\n", key_to_insert);
-  
+
   free(cursor);
   dynamic_row_free(&row);
-  
+
   // Free the values array if it exists
   if (statement->values) {
     for (uint32_t i = 0; i < statement->num_values; i++) {
@@ -606,488 +767,768 @@ ExecuteResult execute_insert(Statement *statement, Table *table)
   return EXECUTE_SUCCESS;
 }
 
-// Fix unused parameter warning by explicitly marking it
-ExecuteResult execute_select(Statement *statement, Table *table)
-{
-  (void)statement; // Mark parameter as used
-  
-  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+ExecuteResult execute_select(Statement *statement, Table *table) {
+  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
   if (!table_def) {
     return EXECUTE_UNRECOGNIZED_STATEMENT;
   }
-  
-  #ifdef DEBUG
-  printf("DEBUG: Selecting from table with %d columns\n", table_def->num_columns);
-  #endif
-  
+
+#ifdef DEBUG
+  printf("DEBUG: Selecting from table with %d columns\n",
+         table_def->num_columns);
+#endif
+
+  // If the statement has a where clause, it's a filtered select
+  if (statement->has_where_clause) {
+    return execute_filtered_select(statement, table);
+  }
+
   Cursor *cursor = table_start(table);
   DynamicRow row;
   dynamic_row_init(&row, table_def);
 
   // Print column names as header
   printf("| ");
-  for (uint32_t i = 0; i < table_def->num_columns; i++) {
-    printf("%s | ", table_def->columns[i].name);
+  if (statement->num_columns_to_select > 0) {
+    // Print only selected columns
+    for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+      printf("%s | ", statement->columns_to_select[i]);
+    }
+  } else {
+    // Print all column names
+    for (uint32_t i = 0; i < table_def->num_columns; i++) {
+      printf("%s | ", table_def->columns[i].name);
+    }
   }
   printf("\n");
-  
+
   // Print separator line
-  for (uint32_t i = 0; i < table_def->num_columns; i++) {
+  for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                                ? statement->num_columns_to_select
+                                : table_def->num_columns);
+       i++) {
     printf("|-%s-", "----------");
   }
   printf("|\n");
-  
+
   while (!(cursor->end_of_table)) {
-    void* value = cursor_value(cursor);
-    
+    void *value = cursor_value(cursor);
+
     deserialize_dynamic_row(value, table_def, &row);
-    print_dynamic_row(&row, table_def);
+
+    // Print row data
+    printf("| ");
+
+    if (statement->num_columns_to_select > 0) {
+      // Print only selected columns
+      for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+        // Find column index by name
+        int column_idx = -1;
+        for (uint32_t j = 0; j < table_def->num_columns; j++) {
+          if (strcasecmp(table_def->columns[j].name,
+                         statement->columns_to_select[i]) == 0) {
+            column_idx = j;
+            break;
+          }
+        }
+
+        if (column_idx != -1) {
+          print_dynamic_column(&row, table_def, column_idx);
+        } else {
+          printf("N/A");
+        }
+        printf(" | ");
+      }
+    } else {
+      // Print all columns
+      for (uint32_t i = 0; i < table_def->num_columns; i++) {
+        print_dynamic_column(&row, table_def, i);
+        printf(" | ");
+      }
+    }
+    printf("\n");
+
     cursor_advance(cursor);
   }
 
   dynamic_row_free(&row);
   free(cursor);
 
+  // Free allocated memory for columns
+  free_columns_to_select(statement);
+
   return EXECUTE_SUCCESS;
 }
 
-ExecuteResult execute_select_by_id(Statement *statement, Table *table)
-{
-  TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+ExecuteResult execute_select_by_id(Statement *statement, Table *table) {
+  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
   if (!table_def) {
     return EXECUTE_UNRECOGNIZED_STATEMENT;
   }
-  
+
   Cursor *cursor = table_find(table, statement->id_to_select);
-  
+
   if (!cursor->end_of_table) {
     DynamicRow row;
     dynamic_row_init(&row, table_def);
-    
+
     deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
     print_dynamic_row(&row, table_def);
-    
+
     dynamic_row_free(&row);
   } else {
     printf("No row found with id %d\n", statement->id_to_select);
   }
-  
+
   free(cursor);
   return EXECUTE_SUCCESS;
 }
 
-ExecuteResult execute_update(Statement *statement, Table *table)
-{
+ExecuteResult execute_update(Statement *statement, Table *table) {
   // Find the row with the given id
   Cursor *cursor = table_find(table, statement->id_to_update);
-  
+
   if (cursor->end_of_table) {
     printf("No row found with id %d\n", statement->id_to_update);
     free(cursor);
     return EXECUTE_SUCCESS;
   }
-  
+
   // Get current row data
   Row row;
   deserialize_row(cursor_value(cursor), &row);
-  
+
   // Update the appropriate field based on column name
-  if (strcasecmp(statement->column_to_update, "name") == 0 || 
+  if (strcasecmp(statement->column_to_update, "name") == 0 ||
       strcasecmp(statement->column_to_update, "username") == 0) {
     strncpy(row.username, statement->update_value, COLUMN_USERNAME_SIZE);
-  }
-  else if (strcasecmp(statement->column_to_update, "email") == 0) {
+  } else if (strcasecmp(statement->column_to_update, "email") == 0) {
     strncpy(row.email, statement->update_value, COLUMN_EMAIL_SIZE);
-  }
-  else {
+  } else {
     printf("Unknown column: %s\n", statement->column_to_update);
     free(cursor);
     return EXECUTE_SUCCESS;
   }
-  
+
   // Save updated row back to the database
   serialize_row(&row, cursor_value(cursor));
-  
+
   free(cursor);
   return EXECUTE_SUCCESS;
 }
 
-ExecuteResult execute_delete(Statement *statement, Table *table)
-{
+ExecuteResult execute_delete(Statement *statement, Table *table) {
   // Find the row with the given id
   Cursor *cursor = table_find(table, statement->id_to_delete);
-  
+
   if (cursor->end_of_table) {
     printf("No row found with id %d\n", statement->id_to_delete);
     free(cursor);
     return EXECUTE_SUCCESS;
   }
-  
+
   // Get the leaf node and number of cells
   void *node = get_page(table->pager, cursor->page_num);
   uint32_t num_cells = *leaf_node_num_cells(node);
-  
+
   // Shift cells to overwrite the one being deleted
   if (cursor->cell_num < num_cells - 1) {
     // For variable-sized cells, we need to manually copy and shift each cell
     uint32_t current_pos = cursor->cell_num;
-    
+
     // Get pointer to the cell being deleted
     void *cell_to_delete = leaf_node_cell(node, current_pos);
-    
+
     // Get pointer to the next cell
     void *next_cell = leaf_node_next_cell(node, current_pos);
-    
+
     // Calculate total size of data after this cell
     uint32_t bytes_to_move = 0;
     for (uint32_t i = current_pos + 1; i < num_cells; i++) {
       bytes_to_move += leaf_node_cell_size(node, i);
     }
-    
+
     // Move all following cells backward
     if (bytes_to_move > 0) {
       memmove(cell_to_delete, next_cell, bytes_to_move);
     }
   }
-  
+
   // Decrement number of cells
   (*leaf_node_num_cells(node))--;
-  
+
   free(cursor);
   return EXECUTE_SUCCESS;
 }
 
-PrepareResult prepare_create_table(Input_Buffer* buf, Statement* statement) {
-    statement->type = STATEMENT_CREATE_TABLE;
-    
-    // Tokenize: CREATE TABLE name (col1 type1, col2 type2, ...)
-    char* token = strtok(buf->buffer, " \t");  // Skip "CREATE"
-    token = strtok(NULL, " \t");               // Skip "TABLE"
-    token = strtok(NULL, " \t(");              // Get table name
-    
-    if (!token) {
-        return PREPARE_SYNTAX_ERROR;
+PrepareResult prepare_create_table(Input_Buffer *buf, Statement *statement) {
+  statement->type = STATEMENT_CREATE_TABLE;
+
+  // Tokenize: CREATE TABLE name (col1 type1, col2 type2, ...)
+  char *token = strtok(buf->buffer, " \t"); // Skip "CREATE"
+  token = strtok(NULL, " \t");              // Skip "TABLE"
+  token = strtok(NULL, " \t(");             // Get table name
+
+  if (!token) {
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  strncpy(statement->table_name, token, MAX_TABLE_NAME - 1);
+  statement->table_name[MAX_TABLE_NAME - 1] = '\0';
+
+  // Parse columns: col1 type1, col2 type2, ...
+  statement->num_columns = 0;
+
+  // Tokenize the column definitions
+  char *col_name = strtok(NULL, " \t,)");
+  col_name++; // Skip the opening parenthesis
+  while (col_name && statement->num_columns < MAX_COLUMNS) {
+    // Get column type
+    char *col_type = strtok(NULL, " \t,)");
+    if (!col_type) {
+      return PREPARE_SYNTAX_ERROR;
     }
-    
-    strncpy(statement->table_name, token, MAX_TABLE_NAME - 1);
-    statement->table_name[MAX_TABLE_NAME - 1] = '\0';
-    
-    // Parse columns: col1 type1, col2 type2, ...
-    statement->num_columns = 0;
-    
-    // Tokenize the column definitions
-    char* col_name = strtok(NULL, " \t,)");
-    while (col_name && statement->num_columns < MAX_COLUMNS) {
-        // Get column type
-        char* col_type = strtok(NULL, " \t,)");
-        if (!col_type) {
-            return PREPARE_SYNTAX_ERROR;
-        }
-        
-        ColumnDef* column = &statement->columns[statement->num_columns];
-        strncpy(column->name, col_name, MAX_COLUMN_NAME - 1);
-        column->name[MAX_COLUMN_NAME - 1] = '\0';
-        
-        if (strcasecmp(col_type, "INT") == 0) {
-            column->type = COLUMN_TYPE_INT;
-            column->size = sizeof(int32_t);
-        } else if (strcasecmp(col_type, "FLOAT") == 0) {
-            column->type = COLUMN_TYPE_FLOAT;
-            column->size = sizeof(float);
-        } else if (strcasecmp(col_type, "BOOLEAN") == 0) {
-            column->type = COLUMN_TYPE_BOOLEAN;
-            column->size = sizeof(uint8_t);
-        } else if (strcasecmp(col_type, "DATE") == 0) {
-            column->type = COLUMN_TYPE_DATE;
-            column->size = sizeof(int32_t);
-        } else if (strcasecmp(col_type, "TIME") == 0) {
-            column->type = COLUMN_TYPE_TIME;
-            column->size = sizeof(int32_t);
-        } else if (strcasecmp(col_type, "TIMESTAMP") == 0) {
-            column->type = COLUMN_TYPE_TIMESTAMP;
-            column->size = sizeof(int64_t);
-        } else if (strncasecmp(col_type, "BLOB", 4) == 0) {
-            column->type = COLUMN_TYPE_BLOB;
-            
-            // Check if blob has a size: BLOB(n)
-            char* size_start = strchr(col_type, '(');
-            if (size_start) {
-                char* size_end = strchr(size_start, ')');
-                if (size_end) {
-                    *size_end = '\0';
-                    char* size_str = size_start + 1;
-                    column->size = atoi(size_str);
-                    if (column->size == 0) {  // Set default if parsing failed or explicit 0
-                        column->size = 1024;  // 1KB default
-                    }
-                } else {
-                    column->size = 1024;  // Default if parsing failed
-                }
-            } else {
-                // Default blob size
-                column->size = 1024; // 1KB default
-            }
-        } else if (strncasecmp(col_type, "STRING", 6) == 0) {
-            column->type = COLUMN_TYPE_STRING;
-            
-            // Check if string has a size: STRING(n)
-            char* size_start = strchr(col_type, '(');
-            if (size_start) {
-                char* size_end = strchr(size_start, ')');
-                if (size_end) {
-                    *size_end = '\0';
-                    char* size_str = size_start + 1;
-                    column->size = atoi(size_str);
-                    if (column->size == 0) {  // Set default if parsing failed or explicit 0
-                        column->size = 255;  // Default string size
-                    }
-                } else {
-                    column->size = 255;  // Default if parsing failed
-                }
-            } else {
-                // Default string size
-                column->size = 255;
-            }
-            
-            // No need to add space for null terminator - this is handled in dynamic_row_init
-            
-            #ifdef DEBUG
-            printf("DEBUG: Set string column '%s' size to %u\n", column->name, column->size);
-            #endif
+
+    ColumnDef *column = &statement->columns[statement->num_columns];
+    strncpy(column->name, col_name, MAX_COLUMN_NAME - 1);
+    column->name[MAX_COLUMN_NAME - 1] = '\0';
+
+    if (strcasecmp(col_type, "INT") == 0) {
+      column->type = COLUMN_TYPE_INT;
+      column->size = sizeof(int32_t);
+    } else if (strcasecmp(col_type, "FLOAT") == 0) {
+      column->type = COLUMN_TYPE_FLOAT;
+      column->size = sizeof(float);
+    } else if (strcasecmp(col_type, "BOOLEAN") == 0) {
+      column->type = COLUMN_TYPE_BOOLEAN;
+      column->size = sizeof(uint8_t);
+    } else if (strcasecmp(col_type, "DATE") == 0) {
+      column->type = COLUMN_TYPE_DATE;
+      column->size = sizeof(int32_t);
+    } else if (strcasecmp(col_type, "TIME") == 0) {
+      column->type = COLUMN_TYPE_TIME;
+      column->size = sizeof(int32_t);
+    } else if (strcasecmp(col_type, "TIMESTAMP") == 0) {
+      column->type = COLUMN_TYPE_TIMESTAMP;
+      column->size = sizeof(int64_t);
+    } else if (strncasecmp(col_type, "BLOB", 4) == 0) {
+      column->type = COLUMN_TYPE_BLOB;
+
+      // Check if blob has a size: BLOB(n)
+      char *size_start = strchr(col_type, '(');
+      if (size_start) {
+        char *size_end = strchr(size_start, ')');
+        if (size_end) {
+          *size_end = '\0';
+          char *size_str = size_start + 1;
+          column->size = atoi(size_str);
+          if (column->size ==
+              0) {               // Set default if parsing failed or explicit 0
+            column->size = 1024; // 1KB default
+          }
         } else {
-            return PREPARE_SYNTAX_ERROR;
+          column->size = 1024; // Default if parsing failed
         }
-        
-        statement->num_columns++;
-        col_name = strtok(NULL, " \t,)");
+      } else {
+        // Default blob size
+        column->size = 1024; // 1KB default
+      }
+    } else if (strncasecmp(col_type, "STRING", 6) == 0) {
+      column->type = COLUMN_TYPE_STRING;
+
+      // Check if string has a size: STRING(n)
+      char *size_start = strchr(col_type, '(');
+      if (size_start) {
+        char *size_end = strchr(size_start, ')');
+        if (size_end) {
+          *size_end = '\0';
+          char *size_str = size_start + 1;
+          column->size = atoi(size_str);
+          if (column->size ==
+              0) {              // Set default if parsing failed or explicit 0
+            column->size = 255; // Default string size
+          }
+        } else {
+          column->size = 255; // Default if parsing failed
+        }
+      } else {
+        // Default string size
+        column->size = 255;
+      }
+
+      // No need to add space for null terminator - this is handled in
+      // dynamic_row_init
+
+#ifdef DEBUG
+      printf("DEBUG: Set string column '%s' size to %u\n", column->name,
+             column->size);
+#endif
+    } else {
+      return PREPARE_SYNTAX_ERROR;
     }
-    
-    if (statement->num_columns == 0) {
-        return PREPARE_SYNTAX_ERROR;
-    }
-    
-    return PREPARE_SUCCESS;
+
+    statement->num_columns++;
+    col_name = strtok(NULL, " \t,)");
+  }
+
+  if (statement->num_columns == 0) {
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  return PREPARE_SUCCESS;
 }
 
-PrepareResult prepare_use_table(Input_Buffer* buf, Statement* statement) {
-    statement->type = STATEMENT_USE_TABLE;
-    
-    // Parse: USE TABLE table_name
-    char* token = strtok(buf->buffer, " \t");  // Skip "USE"
-    token = strtok(NULL, " \t");               // Skip "TABLE"
-    token = strtok(NULL, " \t");               // Get table name
-    
-    if (!token) {
-        return PREPARE_SYNTAX_ERROR;
-    }
-    
-    strncpy(statement->table_name, token, MAX_TABLE_NAME - 1);
-    statement->table_name[MAX_TABLE_NAME - 1] = '\0';
-    
-    return PREPARE_SUCCESS;
+PrepareResult prepare_use_table(Input_Buffer *buf, Statement *statement) {
+  statement->type = STATEMENT_USE_TABLE;
+
+  // Parse: USE TABLE table_name
+  char *token = strtok(buf->buffer, " \t"); // Skip "USE"
+  token = strtok(NULL, " \t");              // Skip "TABLE"
+  token = strtok(NULL, " \t");              // Get table name
+
+  if (!token) {
+    return PREPARE_SYNTAX_ERROR;
+  }
+
+  strncpy(statement->table_name, token, MAX_TABLE_NAME - 1);
+  statement->table_name[MAX_TABLE_NAME - 1] = '\0';
+
+  return PREPARE_SUCCESS;
 }
 
 // Fix unused parameter warning
-PrepareResult prepare_show_tables(Input_Buffer* buf, Statement* statement) {
-    (void)buf; // Mark parameter as used
-    statement->type = STATEMENT_SHOW_TABLES;
-    return PREPARE_SUCCESS;
+PrepareResult prepare_show_tables(Input_Buffer *buf, Statement *statement) {
+  (void)buf; // Mark parameter as used
+  statement->type = STATEMENT_SHOW_TABLES;
+  return PREPARE_SUCCESS;
 }
 
-ExecuteResult execute_create_table(Statement* statement, Database* db) {
-    if (db_create_table(db, statement->table_name, statement->columns, statement->num_columns)) {
-        printf("Table created: %s\n", statement->table_name);
-        return EXECUTE_SUCCESS;
-    } else {
-        printf("Failed to create table: %s\n", statement->table_name);
-        return EXECUTE_UNRECOGNIZED_STATEMENT;
-    }
-}
-
-ExecuteResult execute_use_table(Statement* statement, Database* db) {
-    if (db_use_table(db, statement->table_name)) {
-        printf("Using table: %s\n", statement->table_name);
-        return EXECUTE_SUCCESS;
-    } else {
-        printf("Table not found: %s\n", statement->table_name);
-        return EXECUTE_UNRECOGNIZED_STATEMENT;
-    }
-}
-
-// Fix unused parameter warning
-ExecuteResult execute_show_tables(Statement* statement, Database* db) {
-    (void)statement; // Mark parameter as used
-    
-    printf("Tables in database %s:\n", db->name);
-    
-    if (db->catalog.num_tables == 0) {
-        printf("  No tables found.\n");
-    } else {
-        for (uint32_t i = 0; i < db->catalog.num_tables; i++) {
-            printf("  %s%s\n", 
-                db->catalog.tables[i].name,
-                (i == db->catalog.active_table && db->active_table != NULL) ? " (active)" : "");
-        }
-    }
-    
+ExecuteResult execute_create_table(Statement *statement, Database *db) {
+  if (db_create_table(db, statement->table_name, statement->columns,
+                      statement->num_columns)) {
+    printf("Table created: %s\n", statement->table_name);
     return EXECUTE_SUCCESS;
+  } else {
+    printf("Failed to create table: %s\n", statement->table_name);
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+}
+
+ExecuteResult execute_use_table(Statement *statement, Database *db) {
+  if (db_use_table(db, statement->table_name)) {
+    printf("Using table: %s\n", statement->table_name);
+    return EXECUTE_SUCCESS;
+  } else {
+    printf("Table not found: %s\n", statement->table_name);
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+}
+
+// Fix unused parameter warning
+ExecuteResult execute_show_tables(Statement *statement, Database *db) {
+  (void)statement; // Mark parameter as used
+
+  printf("Tables in database %s:\n", db->name);
+
+  if (db->catalog.num_tables == 0) {
+    printf("  No tables found.\n");
+  } else {
+    for (uint32_t i = 0; i < db->catalog.num_tables; i++) {
+      printf("  %s%s\n", db->catalog.tables[i].name,
+             (i == db->catalog.active_table && db->active_table != NULL)
+                 ? " (active)"
+                 : "");
+    }
+  }
+
+  return EXECUTE_SUCCESS;
 }
 
 // Add the execute statement implementation
 ExecuteResult execute_statement(Statement *statement, Database *db) {
-    // Check if we need to switch tables first, but skip this for CREATE TABLE
-    if (statement->table_name[0] != '\0' && statement->type != STATEMENT_CREATE_TABLE) {
-        // A table was specified in the query
-        
-        // Check if we need to switch
-        bool need_switch = true;
-        if (db->active_table != NULL) {
-            TableDef* active_table = catalog_get_active_table(&db->catalog);
-            if (active_table && strcmp(active_table->name, statement->table_name) == 0) {
-                need_switch = false;  // Already using this table
-            }
-        }
-        
-        // Switch tables if needed
-        if (need_switch) {
-            if (!db_use_table(db, statement->table_name)) {
-                printf("Table not found: %s\n", statement->table_name);
-                return EXECUTE_UNRECOGNIZED_STATEMENT;
-            }
-            // Table successfully switched
-        }
+  // Check if we need to switch tables first, but skip this for CREATE TABLE
+  if (statement->table_name[0] != '\0' &&
+      statement->type != STATEMENT_CREATE_TABLE) {
+    // A table was specified in the query
+
+    // Check if we need to switch
+    bool need_switch = true;
+    if (db->active_table != NULL) {
+      TableDef *active_table = catalog_get_active_table(&db->catalog);
+      if (active_table &&
+          strcmp(active_table->name, statement->table_name) == 0) {
+        need_switch = false; // Already using this table
+      }
     }
-    
-    // Now execute the statement with the correct table active
-    switch (statement->type) {
-        case STATEMENT_INSERT:
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return EXECUTE_SUCCESS;
-            }
-            return execute_insert(statement, db->active_table);
-            
-        case STATEMENT_SELECT:
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return EXECUTE_SUCCESS;
-            }
-            return execute_select(statement, db->active_table);
-            
-        case STATEMENT_SELECT_BY_ID:
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return EXECUTE_SUCCESS;
-            }
-            return execute_select_by_id(statement, db->active_table);
-            
-        case STATEMENT_UPDATE:
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return EXECUTE_SUCCESS;
-            }
-            return execute_update(statement, db->active_table);
-            
-        case STATEMENT_DELETE:
-            if (db->active_table == NULL) {
-                printf("Error: No active table selected.\n");
-                return EXECUTE_SUCCESS;
-            }
-            return execute_delete(statement, db->active_table);
-            
-        case STATEMENT_CREATE_TABLE:
-            return execute_create_table(statement, db);
-            
-        case STATEMENT_USE_TABLE:
-            return execute_use_table(statement, db);
-            
-        case STATEMENT_SHOW_TABLES:
-            return execute_show_tables(statement, db);
-            
-        case STATEMENT_CREATE_DATABASE:
-        case STATEMENT_USE_DATABASE:
-            // These should be handled separately
-            return EXECUTE_UNRECOGNIZED_STATEMENT;
-            
-        default:
-            return EXECUTE_UNRECOGNIZED_STATEMENT;
+
+    // Switch tables if needed
+    if (need_switch) {
+      if (!db_use_table(db, statement->table_name)) {
+        printf("Table not found: %s\n", statement->table_name);
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+      }
+      // Table successfully switched
     }
+  }
+
+  // Now execute the statement with the correct table active
+  switch (statement->type) {
+  case STATEMENT_INSERT:
+    if (db->active_table == NULL) {
+      printf("Error: No active table selected.\n");
+      return EXECUTE_SUCCESS;
+    }
+    return execute_insert(statement, db->active_table);
+
+  case STATEMENT_SELECT:
+    if (db->active_table == NULL) {
+      printf("Error: No active table selected.\n");
+      return EXECUTE_SUCCESS;
+    }
+    return execute_select(statement, db->active_table);
+
+  case STATEMENT_SELECT_BY_ID:
+    if (db->active_table == NULL) {
+      printf("Error: No active table selected.\n");
+      return EXECUTE_SUCCESS;
+    }
+    return execute_select_by_id(statement, db->active_table);
+
+  case STATEMENT_UPDATE:
+    if (db->active_table == NULL) {
+      printf("Error: No active table selected.\n");
+      return EXECUTE_SUCCESS;
+    }
+    return execute_update(statement, db->active_table);
+
+  case STATEMENT_DELETE:
+    if (db->active_table == NULL) {
+      printf("Error: No active table selected.\n");
+      return EXECUTE_SUCCESS;
+    }
+    return execute_delete(statement, db->active_table);
+
+  case STATEMENT_CREATE_TABLE:
+    return execute_create_table(statement, db);
+
+  case STATEMENT_USE_TABLE:
+    return execute_use_table(statement, db);
+
+  case STATEMENT_SHOW_TABLES:
+    return execute_show_tables(statement, db);
+
+  case STATEMENT_CREATE_DATABASE:
+  case STATEMENT_USE_DATABASE:
+    // These should be handled separately
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+
+  default:
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
 }
 
-PrepareResult prepare_database_statement(Input_Buffer *buf, Statement *statement) {
-    if (strncasecmp(buf->buffer, "create database", 15) == 0) {
-        statement->type = STATEMENT_CREATE_DATABASE;
-        
-        // Parse database name
-        char* token = strtok(buf->buffer, " \t");  // Skip "CREATE"
-        token = strtok(NULL, " \t");              // Skip "DATABASE"
-        token = strtok(NULL, " \t");              // Get database name
-        
-        if (!token) {
-            return PREPARE_SYNTAX_ERROR;
-        }
-        
-        strncpy(statement->database_name, token, sizeof(statement->database_name) - 1);
-        statement->database_name[sizeof(statement->database_name) - 1] = '\0';
-        
-        return PREPARE_SUCCESS;
+PrepareResult prepare_database_statement(Input_Buffer *buf,
+                                         Statement *statement) {
+  if (strncasecmp(buf->buffer, "create database", 15) == 0) {
+    statement->type = STATEMENT_CREATE_DATABASE;
+
+    // Parse database name
+    char *token = strtok(buf->buffer, " \t"); // Skip "CREATE"
+    token = strtok(NULL, " \t");              // Skip "DATABASE"
+    token = strtok(NULL, " \t");              // Get database name
+
+    if (!token) {
+      return PREPARE_SYNTAX_ERROR;
     }
-    else if (strncasecmp(buf->buffer, "use database", 12) == 0) {
-        statement->type = STATEMENT_USE_DATABASE;
-        
-        // Parse database name
-        char* token = strtok(buf->buffer, " \t");  // Skip "USE"
-        token = strtok(NULL, " \t");              // Skip "DATABASE"
-        token = strtok(NULL, " \t");              // Get database name
-        
-        if (!token) {
-            return PREPARE_SYNTAX_ERROR;
-        }
-        
-        strncpy(statement->database_name, token, sizeof(statement->database_name) - 1);
-        statement->database_name[sizeof(statement->database_name) - 1] = '\0';
-        
-        return PREPARE_SUCCESS;
+
+    strncpy(statement->database_name, token,
+            sizeof(statement->database_name) - 1);
+    statement->database_name[sizeof(statement->database_name) - 1] = '\0';
+
+    return PREPARE_SUCCESS;
+  } else if (strncasecmp(buf->buffer, "use database", 12) == 0) {
+    statement->type = STATEMENT_USE_DATABASE;
+
+    // Parse database name
+    char *token = strtok(buf->buffer, " \t"); // Skip "USE"
+    token = strtok(NULL, " \t");              // Skip "DATABASE"
+    token = strtok(NULL, " \t");              // Get database name
+
+    if (!token) {
+      return PREPARE_SYNTAX_ERROR;
     }
-    
-    return PREPARE_UNRECOGNIZED_STATEMENT;
+
+    strncpy(statement->database_name, token,
+            sizeof(statement->database_name) - 1);
+    statement->database_name[sizeof(statement->database_name) - 1] = '\0';
+
+    return PREPARE_SUCCESS;
+  }
+
+  return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-ExecuteResult execute_database_statement(Statement *statement, Database **db_ptr) {
-    switch (statement->type) {
-        case STATEMENT_CREATE_DATABASE:
-            // Close current database if open
-            if (*db_ptr) {
-                db_close_database(*db_ptr);
-                *db_ptr = NULL;
-            }
-            
-            // Create and open the new database
-            *db_ptr = db_create_database(statement->database_name);
-            if (!*db_ptr) {
-                return EXECUTE_UNRECOGNIZED_STATEMENT;
-            }
-            
-            printf("Database created: %s\n", statement->database_name);
-            return EXECUTE_SUCCESS;
-            
-        case STATEMENT_USE_DATABASE:
-            // Close current database if open
-            if (*db_ptr) {
-                db_close_database(*db_ptr);
-                *db_ptr = NULL;
-            }
-            
-            // Open the existing database
-            *db_ptr = db_open_database(statement->database_name);
-            if (!*db_ptr) {
-                return EXECUTE_UNRECOGNIZED_STATEMENT;
-            }
-            
-            printf("Using database: %s\n", statement->database_name);
-            return EXECUTE_SUCCESS;
-            
-        default:
-            return EXECUTE_UNRECOGNIZED_STATEMENT;
+ExecuteResult execute_database_statement(Statement *statement,
+                                         Database **db_ptr) {
+  switch (statement->type) {
+  case STATEMENT_CREATE_DATABASE:
+    // Close current database if open
+    if (*db_ptr) {
+      db_close_database(*db_ptr);
+      *db_ptr = NULL;
     }
+
+    // Create and open the new database
+    *db_ptr = db_create_database(statement->database_name);
+    if (!*db_ptr) {
+      return EXECUTE_UNRECOGNIZED_STATEMENT;
+    }
+
+    printf("Database created: %s\n", statement->database_name);
+    return EXECUTE_SUCCESS;
+
+  case STATEMENT_USE_DATABASE:
+    // Close current database if open
+    if (*db_ptr) {
+      db_close_database(*db_ptr);
+      *db_ptr = NULL;
+    }
+
+    // Open the existing database
+    *db_ptr = db_open_database(statement->database_name);
+    if (!*db_ptr) {
+      return EXECUTE_UNRECOGNIZED_STATEMENT;
+    }
+
+    printf("Using database: %s\n", statement->database_name);
+    return EXECUTE_SUCCESS;
+
+  default:
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+}
+
+ExecuteResult execute_filtered_select(Statement *statement, Table *table) {
+  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
+  if (!table_def) {
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+
+  // Find column index for the where condition
+  int where_column_idx = -1;
+  for (uint32_t i = 0; i < table_def->num_columns; i++) {
+    if (strcasecmp(table_def->columns[i].name, statement->where_column) == 0) {
+      where_column_idx = i;
+      break;
+    }
+  }
+
+  if (where_column_idx == -1) {
+    printf("Error: Column '%s' not found in table\n", statement->where_column);
+    // Free allocated memory before returning
+    free_columns_to_select(statement);
+    return EXECUTE_UNRECOGNIZED_STATEMENT;
+  }
+
+  // Special case: if filtering by ID, use the more efficient btree search
+  if (strcasecmp(statement->where_column, "id") == 0 || where_column_idx == 0) {
+    int id_value = atoi(statement->where_value);
+    Cursor *cursor = table_find(table, id_value);
+
+    if (!cursor->end_of_table) {
+      DynamicRow row;
+      dynamic_row_init(&row, table_def);
+
+      deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
+
+      // Print headers
+      printf("| ");
+      if (statement->num_columns_to_select > 0) {
+        // Print only selected columns
+        for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+          printf("%s | ", statement->columns_to_select[i]);
+        }
+      } else {
+        // Print all column names
+        for (uint32_t i = 0; i < table_def->num_columns; i++) {
+          printf("%s | ", table_def->columns[i].name);
+        }
+      }
+      printf("\n");
+
+      // Print separator
+      for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                                    ? statement->num_columns_to_select
+                                    : table_def->num_columns);
+           i++) {
+        printf("|-%s-", "----------");
+      }
+      printf("|\n");
+
+      // Print row
+      printf("| ");
+      if (statement->num_columns_to_select > 0) {
+        // Print only selected columns
+        for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+          // Find column index by name
+          int column_idx = -1;
+          for (uint32_t j = 0; j < table_def->num_columns; j++) {
+            if (strcasecmp(table_def->columns[j].name,
+                           statement->columns_to_select[i]) == 0) {
+              column_idx = j;
+              break;
+            }
+          }
+          #ifdef DEBUG
+          printf("Column index is %d", column_idx);
+          #endif
+          if (column_idx != -1) {
+            print_dynamic_column(&row, table_def, column_idx);
+          } else {
+            printf("N/A");
+          }
+          printf(" | ");
+        }
+      } else {
+        // Print all columns
+        for (uint32_t i = 0; i < table_def->num_columns; i++) {
+          print_dynamic_column(&row, table_def, i);
+          printf(" | ");
+        }
+      }
+      printf("\n");
+    } else {
+      printf("Record not found.\n");
+    }
+
+    free(cursor);
+  } else {
+    // For non-ID columns, we need to do a full table scan
+    bool rows_found = false;
+    Cursor *cursor = table_start(table);
+    DynamicRow row;
+    dynamic_row_init(&row, table_def);
+
+    // Print headers only if we find at least one row
+    bool headers_printed = false;
+
+    while (!(cursor->end_of_table)) {
+      void *value = cursor_value(cursor);
+      deserialize_dynamic_row(value, table_def, &row);
+
+      // Check if this row matches our condition
+      bool row_matches = false;
+
+      switch (table_def->columns[where_column_idx].type) {
+      case COLUMN_TYPE_INT: {
+        int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
+        int where_value = atoi(statement->where_value);
+        row_matches = (col_value == where_value);
+        break;
+      }
+      case COLUMN_TYPE_STRING: {
+        char *col_value =
+            dynamic_row_get_string(&row, table_def, where_column_idx);
+        row_matches = (strcasecmp(col_value, statement->where_value) == 0);
+        break;
+      }
+      case COLUMN_TYPE_FLOAT: {
+        float col_value =
+            dynamic_row_get_float(&row, table_def, where_column_idx);
+        float where_value = atof(statement->where_value);
+        row_matches = (fabs(col_value - where_value) <
+                       0.0001); // Approximate floating point comparison
+        break;
+      }
+      case COLUMN_TYPE_BOOLEAN: {
+        bool col_value =
+            dynamic_row_get_boolean(&row, table_def, where_column_idx);
+        bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
+                            strcmp(statement->where_value, "1") == 0);
+        row_matches = (col_value == where_value);
+        break;
+      }
+      // Add cases for other column types as needed
+      default:
+        row_matches = false;
+        break;
+      }
+
+      if (row_matches) {
+        rows_found = true;
+
+        // Print headers if this is the first match
+        if (!headers_printed) {
+          printf("| ");
+          if (statement->num_columns_to_select > 0) {
+            // Print only selected columns
+            for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+              printf("%s | ", statement->columns_to_select[i]);
+            }
+          } else {
+            // Print all column names
+            for (uint32_t i = 0; i < table_def->num_columns; i++) {
+              printf("%s | ", table_def->columns[i].name);
+            }
+          }
+          printf("\n");
+
+          // Print separator
+          for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                                        ? statement->num_columns_to_select
+                                        : table_def->num_columns);
+               i++) {
+            printf("|-%s-", "----------");
+          }
+          printf("|\n");
+
+          headers_printed = true;
+        }
+
+        // Print row
+        printf("| ");
+        if (statement->num_columns_to_select > 0) {
+          // Print only selected columns
+          for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+            // Find column index by name
+            int column_idx = -1;
+            for (uint32_t j = 0; j < table_def->num_columns; j++) {
+              if (strcasecmp(table_def->columns[j].name,
+                             statement->columns_to_select[i]) == 0) {
+                column_idx = j;
+                break;
+              }
+            }
+
+            if (column_idx != -1) {
+              print_dynamic_column(&row, table_def, column_idx);
+            } else {
+              printf("N/A");
+            }
+            printf(" | ");
+          }
+        } else {
+          // Print all columns
+          for (uint32_t i = 0; i < table_def->num_columns; i++) {
+            print_dynamic_column(&row, table_def, i);
+            printf(" | ");
+          }
+        }
+        printf("\n");
+      }
+
+      cursor_advance(cursor);
+    }
+
+    if (!rows_found) {
+      printf("No records found matching the condition.\n");
+    }
+
+    dynamic_row_free(&row);
+    free(cursor);
+  }
+
+  // Free allocated memory for columns
+  free_columns_to_select(statement);
+  return EXECUTE_SUCCESS;
 }
