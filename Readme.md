@@ -13,6 +13,8 @@ The **Database Project** is a lightweight, command-line-based database engine im
 - **Insert Records:** Add new entries to the database
 - **Select Records:** Retrieve and display stored data
 - **Select Records by ID:** Retrieve and display a specific record by its ID
+- **Select Specific Columns:** Choose which columns to display in query results
+- **Filter Records:** Filter records by any column, not just ID
 - **Update Records:** Modify existing entries in the database
 - **Delete Records:** Remove entries from the database
 - **B-Tree Indexing:** Efficient data organization and retrieval using B-Trees
@@ -167,15 +169,38 @@ Upon running the application, you'll enter an interactive shell where you can ex
   SELECT * FROM students
   ```
 
-- **Select Data by ID:**
+- **Select Specific Columns:**
 
   ```sql
-  SELECT * FROM table_name WHERE id = <id>
+  SELECT column1, column2, ... FROM table_name
   ```
 
   Example:
   ```sql
-  SELECT * FROM students WHERE id = 1
+  SELECT name, gpa FROM students
+  ```
+
+- **Filter Records by Any Column:**
+
+  ```sql
+  SELECT * FROM table_name WHERE column_name = value
+  ```
+
+  Example:
+  ```sql
+  SELECT * FROM students WHERE name = "Bob"
+  SELECT * FROM students WHERE gpa = 3.5
+  ```
+
+- **Combine Column Selection with Filtering:**
+
+  ```sql
+  SELECT column1, column2, ... FROM table_name WHERE column_name = value
+  ```
+
+  Example:
+  ```sql
+  SELECT name FROM students WHERE gpa = 3.5
   ```
 
 - **Update Data:**
@@ -239,39 +264,53 @@ db > INSERT INTO students VALUES (1, "Alice", 3.8)
 Executed.
 db > INSERT INTO students VALUES (2, "Bob", 3.5)
 Executed.
+db > INSERT INTO students VALUES (3, "Carol", 3.5)
+Executed.
 db > SELECT * FROM students
-(1, Alice, 3.8)
-(2, Bob, 3.5)
+| id | name | gpa |
+|----------|----------|----------|
+| 1 | Alice | 3.80 |
+| 2 | Bob | 3.50 |
+| 3 | Carol | 3.50 |
+Executed.
+db > SELECT name, gpa FROM students
+| name | gpa |
+|----------|----------|
+| Alice | 3.80 |
+| Bob | 3.50 |
+| Carol | 3.50 |
+Executed.
+db > SELECT * FROM students WHERE gpa = 3.5
+| id | name | gpa |
+|----------|----------|----------|
+| 2 | Bob | 3.50 |
+| 3 | Carol | 3.50 |
+Executed.
+db > SELECT name FROM students WHERE gpa = 3.5
+| name |
+|----------|
+| Bob |
+| Carol |
 Executed.
 db > SELECT * FROM students WHERE id = 1
-(1, Alice, 3.8)
+| id | name | gpa |
+|----------|----------|----------|
+| 1 | Alice | 3.80 |
 Executed.
 db > UPDATE students SET name = "Alicia" WHERE id = 1
 Executed.
 db > SELECT * FROM students WHERE id = 1
-(1, Alicia, 3.8)
+| id | name | gpa |
+|----------|----------|----------|
+| 1 | Alicia | 3.80 |
 Executed.
 db > DELETE FROM students WHERE id = 1
 Executed.
 db > SELECT * FROM students
-(2, Bob, 3.5)
-Executed.
-db > .btree
-Tree:
-- internal (size 1)
-  - leaf (size 1)
-    - 1
-  - key 1
-  - leaf (size 1)
-    - 2
-- key 2
-db > .constants
-ROW_SIZE: 291
-COMMON_NODE_HEADER_SIZE: 6
-LEAF_NODE_HEADER_SIZE: 14
-LEAF_NODE_CELL_SIZE: 292
-LEAF_NODE_SPACE_FOR_CELLS: 4082
-LEAF_NODE_MAX_CELLS: 13
+| id | name | gpa |
+|----------|----------|----------|
+| 2 | Bob | 3.50 |
+| 3 | Carol | 3.50 |
 Executed.
 db > .exit
 ```
