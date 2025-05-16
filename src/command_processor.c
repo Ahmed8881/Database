@@ -595,7 +595,7 @@ PrepareResult prepare_select(Input_Buffer *buf, Statement *statement) {
     } else {
       // Unquoted value - read until space or end of string
       char *value_end = value_start;
-      while (*value_end && *value_end == ' ' && *value_end == '\0')
+      while (*value_end && *value_end != ' ' && *value_end != '\0')
         value_end++;
 
       int value_len = value_end - value_start;
