@@ -25,9 +25,13 @@ $(OBJ_DIR)/%.o: %.c
 
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache *.db Database
+	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache 
+
+rmdb:
+	rm -rf Database
 test:
 	# -vv for verbose output
 	python3 -m pytest -vv test_db.py
 
-.PHONY: all clean
+
+.PHONY: all clean test

@@ -69,14 +69,23 @@ typedef struct
   
   // Reference to the database - needed for schema lookup
   Database *db;
+  
+  // Field for selecting specific column and improved where clause
+  char** columns_to_select;
+  uint32_t num_columns_to_select;
+  char where_column[MAX_COLUMN_NAME];
+  char where_value[COLUMN_EMAIL_SIZE];
+  bool has_where_clause;
 } Statement;
 
+void free_columns_to_select(Statement *statement);
 // Meta command function
 MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db);
 
 // Prepare statement functions
 PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_select(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_create_table(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_use_table(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_show_tables(Input_Buffer *buf, Statement *statement);
@@ -88,6 +97,7 @@ PrepareResult prepare_database_statement(Input_Buffer *buf, Statement *statement
 ExecuteResult execute_statement(Statement *statement, Database *db);
 ExecuteResult execute_insert(Statement *statement, Table *table);
 ExecuteResult execute_select(Statement *statement, Table *table);
+ExecuteResult execute_filtered_select(Statement *statement, Table *table);
 ExecuteResult execute_select_by_id(Statement *statement, Table *table);
 ExecuteResult execute_update(Statement *statement, Table *table);
 ExecuteResult execute_delete(Statement *statement, Table *table);
