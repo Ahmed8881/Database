@@ -229,6 +229,22 @@ Upon running the application, you'll enter an interactive shell where you can ex
   DELETE FROM students WHERE id = 1
   ```
 
+### Transaction Commands
+
+Transactions ensure that database operations are atomic, consistent, isolated, and durable (ACID). 
+
+- **Enable Transactions:**
+
+- **Begin a Transaction:**
+
+- **Commit a Transaction:**
+
+- **Rollback a Transaction:**
+
+- **View Transaction Status:**
+
+- **Disable Transactions:**
+
 ### Meta-Commands
 
 - **Exit the Application:**
