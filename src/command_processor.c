@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
+// #include <strings.h>
 
 void print_constants() {
   printf("ROW_SIZE: %d\n", ROW_SIZE);
@@ -82,8 +82,24 @@ MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db) {
     printf("Constants:\n");
     print_constants();
     return META_COMMAND_SUCCESS;
+  } 
+  // Add transaction commands
+  else if (strcmp(buf->buffer, ".txn begin") == 0) {
+    return META_COMMAND_TXN_BEGIN;
+  } else if (strcmp(buf->buffer, ".txn commit") == 0) {
+    return META_COMMAND_TXN_COMMIT;
+  } else if (strcmp(buf->buffer, ".txn rollback") == 0) {
+    return META_COMMAND_TXN_ROLLBACK;
+  } else if (strcmp(buf->buffer, ".txn status") == 0) {
+    return META_COMMAND_TXN_STATUS;
+  } else if (strcmp(buf->buffer, ".txn enable") == 0) {
+    db_enable_transactions(db);
+    return META_COMMAND_SUCCESS;
+  } else if (strcmp(buf->buffer, ".txn disable") == 0) {
+    db_disable_transactions(db);
+    return META_COMMAND_SUCCESS;
   }
-
+  
   return META_COMMAND_UNRECOGNIZED_COMMAND;
 }
 
@@ -617,154 +633,181 @@ void free_columns_to_select(Statement *statement) {
   }
 }
 
+// Modify the execute_insert function to support transactions:
+
 ExecuteResult execute_insert(Statement *statement, Table *table) {
-  // Get active table definition from database catalog
-  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
-  if (!table_def) {
-    printf("Error: No active table definition found.\n");
-    return EXECUTE_UNRECOGNIZED_STATEMENT;
-  }
-
-  // Create a dynamic row
-  DynamicRow row;
-  dynamic_row_init(&row, table_def);
-
-  // Get primary key from the first value
-  uint32_t key_to_insert = 0;
-
-  // Check if we have values to insert
-  if (!statement->values || statement->num_values == 0) {
-    // Use the legacy row_to_insert approach for backward compatibility
-    key_to_insert = statement->row_to_insert.id;
-
-    // Set the primary key (assuming first column is the key)
-    if (table_def->num_columns > 0 &&
-        table_def->columns[0].type == COLUMN_TYPE_INT) {
-      dynamic_row_set_int(&row, table_def, 0, key_to_insert);
-#ifdef DEBUG
-      printf("DEBUG: Set primary key %d using legacy approach\n",
-             key_to_insert);
-#endif
+    // Get active table definition from database catalog
+    TableDef* table_def = catalog_get_active_table(&statement->db->catalog);
+    if (!table_def) {
+        printf("Error: No active table definition found.\n");
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
     }
 
-    // Fill in other column values if they exist
-    if (table_def->num_columns > 1) {
-      if (table_def->columns[1].type == COLUMN_TYPE_STRING) {
-        dynamic_row_set_string(&row, table_def, 1,
-                               statement->row_to_insert.username);
-#ifdef DEBUG
-        printf("DEBUG: Set column 1 to '%s' using legacy approach\n",
-               statement->row_to_insert.username);
-#endif
-      }
+    // Check for active transaction if transactions are enabled
+    uint32_t txn_id = 0;
+    if (txn_manager_is_enabled(&statement->db->txn_manager)) {
+        txn_id = statement->db->active_txn_id;
+        if (txn_id == 0) {
+            // Auto-start a transaction for this operation
+            txn_id = db_begin_transaction(statement->db);
+            if (txn_id == 0) {
+                printf("Warning: Could not start transaction for INSERT operation.\n");
+            }
+        }
     }
 
-    if (table_def->num_columns > 2) {
-      if (table_def->columns[2].type == COLUMN_TYPE_STRING) {
-        dynamic_row_set_string(&row, table_def, 2,
-                               statement->row_to_insert.email);
+    // Rest of your existing execute_insert code...
+
+    // Declare and initialize the row variable
+    DynamicRow row;
+    dynamic_row_init(&row, table_def);
+
+    // Get primary key from the first value
+    uint32_t key_to_insert = 0;
+
+    // Check if we have values to insert
+    if (!statement->values || statement->num_values == 0) {
+        // Use the legacy row_to_insert approach for backward compatibility
+        key_to_insert = statement->row_to_insert.id;
+
+        // Set the primary key (assuming first column is the key)
+        if (table_def->num_columns > 0 &&
+            table_def->columns[0].type == COLUMN_TYPE_INT) {
+            dynamic_row_set_int(&row, table_def, 0, key_to_insert);
 #ifdef DEBUG
-        printf("DEBUG: Set column 2 to '%s' using legacy approach\n",
-               statement->row_to_insert.email);
+            printf("DEBUG: Set primary key %d using legacy approach\n",
+                   key_to_insert);
 #endif
-      }
+        }
+
+        // Fill in other column values if they exist
+        if (table_def->num_columns > 1) {
+            if (table_def->columns[1].type == COLUMN_TYPE_STRING) {
+                dynamic_row_set_string(&row, table_def, 1,
+                                       statement->row_to_insert.username);
+#ifdef DEBUG
+                printf("DEBUG: Set column 1 to '%s' using legacy approach\n",
+                       statement->row_to_insert.username);
+#endif
+            }
+        }
+
+        if (table_def->num_columns > 2) {
+            if (table_def->columns[2].type == COLUMN_TYPE_STRING) {
+                dynamic_row_set_string(&row, table_def, 2,
+                                       statement->row_to_insert.email);
+#ifdef DEBUG
+                printf("DEBUG: Set column 2 to '%s' using legacy approach\n",
+                       statement->row_to_insert.email);
+#endif
+            }
+        }
+    } else {
+        // Use the new values array for more flexible column handling
+        key_to_insert = atoi(statement->values[0]);
+#ifdef DEBUG
+        printf("DEBUG: Inserting new row with %d columns\n", statement->num_values);
+#endif
+
+        // Set values for each column
+        for (uint32_t i = 0;
+             i < table_def->num_columns && i < statement->num_values; i++) {
+            ColumnDef *col = &table_def->columns[i];
+            char *value = statement->values[i];
+
+#ifdef DEBUG
+            printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name,
+                   value);
+#endif
+
+            switch (col->type) {
+            case COLUMN_TYPE_INT:
+                dynamic_row_set_int(&row, table_def, i, atoi(value));
+                break;
+            case COLUMN_TYPE_STRING:
+                dynamic_row_set_string(&row, table_def, i, value);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                dynamic_row_set_float(&row, table_def, i, atof(value));
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                dynamic_row_set_boolean(
+                    &row, table_def, i,
+                    (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0));
+                break;
+            // Add other cases as needed
+            default:
+    // For now, just skip unsupported types
+#ifdef DEBUG
+                printf("DEBUG: Unsupported type for column %d\n", i);
+#endif
+                break;
+            }
+        }
     }
-  } else {
-    // Use the new values array for more flexible column handling
-    key_to_insert = atoi(statement->values[0]);
-#ifdef DEBUG
-    printf("DEBUG: Inserting new row with %d columns\n", statement->num_values);
-#endif
-
-    // Set values for each column
-    for (uint32_t i = 0;
-         i < table_def->num_columns && i < statement->num_values; i++) {
-      ColumnDef *col = &table_def->columns[i];
-      char *value = statement->values[i];
-
-#ifdef DEBUG
-      printf("DEBUG: Setting column %d (%s) to value '%s'\n", i, col->name,
-             value);
-#endif
-
-      switch (col->type) {
-      case COLUMN_TYPE_INT:
-        dynamic_row_set_int(&row, table_def, i, atoi(value));
-        break;
-      case COLUMN_TYPE_STRING:
-        dynamic_row_set_string(&row, table_def, i, value);
-        break;
-      case COLUMN_TYPE_FLOAT:
-        dynamic_row_set_float(&row, table_def, i, atof(value));
-        break;
-      case COLUMN_TYPE_BOOLEAN:
-        dynamic_row_set_boolean(
-            &row, table_def, i,
-            (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0));
-        break;
-      // Add other cases as needed
-      default:
-// For now, just skip unsupported types
-#ifdef DEBUG
-        printf("DEBUG: Unsupported type for column %d\n", i);
-#endif
-        break;
-      }
-    }
-  }
 
 // Debug print: Show what we're about to insert
 #ifdef DEBUG
-  printf("Inserting row with key: %d\n", key_to_insert);
-  print_dynamic_row(
-      &row, table_def); // Add this to see the row content before insertion
+    printf("Inserting row with key: %d\n", key_to_insert);
+    print_dynamic_row(
+        &row, table_def); // Add this to see the row content before insertion
 #endif
 
-  Cursor *cursor = table_find(table, key_to_insert);
-  if (!cursor) {
-    printf("Error: Failed to create cursor for insertion.\n");
-    dynamic_row_free(&row);
-    return EXECUTE_UNRECOGNIZED_STATEMENT;
-  }
+    Cursor *cursor = table_find(table, key_to_insert);
+    if (!cursor) {
+        printf("Error: Failed to create cursor for insertion.\n");
+        dynamic_row_free(&row);
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+    }
 
-  // Handle duplicate key
-  void *cur_node = get_page(table->pager, cursor->page_num);
-  if (cursor->cell_num < (*leaf_node_num_cells(cur_node)) &&
-      key_to_insert == *leaf_node_key(cur_node, cursor->cell_num)) {
-    printf("Error: Duplicate key detected: %d\n", key_to_insert);
-    dynamic_row_free(&row);
+    // Handle duplicate key
+    void *cur_node = get_page(table->pager, cursor->page_num);
+    if (cursor->cell_num < (*leaf_node_num_cells(cur_node)) &&
+        key_to_insert == *leaf_node_key(cur_node, cursor->cell_num)) {
+        printf("Error: Duplicate key detected: %d\n", key_to_insert);
+        dynamic_row_free(&row);
+        free(cursor);
+
+        // Free the values array if it exists
+        if (statement->values) {
+            for (uint32_t i = 0; i < statement->num_values; i++) {
+                free(statement->values[i]);
+            }
+            free(statement->values);
+            statement->values = NULL;
+            statement->num_values = 0;
+        }
+
+        return EXECUTE_DUPLICATE_KEY;
+    }
+
+    leaf_node_insert(cursor, key_to_insert, &row, table_def);
+    printf("Row successfully inserted with key: %d\n", key_to_insert);
+
     free(cursor);
+    dynamic_row_free(&row);
 
     // Free the values array if it exists
     if (statement->values) {
-      for (uint32_t i = 0; i < statement->num_values; i++) {
-        free(statement->values[i]);
-      }
-      free(statement->values);
-      statement->values = NULL;
-      statement->num_values = 0;
+        for (uint32_t i = 0; i < statement->num_values; i++) {
+            free(statement->values[i]);
+        }
+        free(statement->values);
+        statement->values = NULL;
+        statement->num_values = 0;
     }
 
-    return EXECUTE_DUPLICATE_KEY;
-  }
-
-  leaf_node_insert(cursor, key_to_insert, &row, table_def);
-  printf("Row successfully inserted with key: %d\n", key_to_insert);
-
-  free(cursor);
-  dynamic_row_free(&row);
-
-  // Free the values array if it exists
-  if (statement->values) {
-    for (uint32_t i = 0; i < statement->num_values; i++) {
-      free(statement->values[i]);
+    // After successful insertion and before returning:
+    if (txn_id != 0) {
+        printf("INSERT recorded in transaction %u\n", txn_id);
+        
+        // You would normally record the change for potential rollback
+        // For a true implementation, you'd need to capture the pre-change state
+        // txn_record_change(&statement->db->txn_manager, txn_id, cursor->page_num, 
+        //                   cursor->cell_num, key_to_insert, NULL, 0);
     }
-    free(statement->values);
-    statement->values = NULL;
-    statement->num_values = 0;
-  }
 
-  return EXECUTE_SUCCESS;
+    return EXECUTE_SUCCESS;
 }
 
 ExecuteResult execute_select(Statement *statement, Table *table) {

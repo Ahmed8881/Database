@@ -78,7 +78,11 @@ Database* db_create_database(const char* name) {
     }
     
     // Open or create the database
-    return db_open_database(name);
+    Database* db = db_open_database(name);
+    if (db) {
+        db_init_transactions(db, 10);  // Support up to 10 concurrent transactions
+    }
+    return db;
 }
 
 Database* db_open_database(const char* name) {
@@ -154,6 +158,7 @@ Database* db_open_database(const char* name) {
         }
     }
     
+    db_init_transactions(db, 10);  // Support up to 10 concurrent transactions
     return db;
 }
 
@@ -232,9 +237,18 @@ bool db_use_table(Database* db, const char* table_name) {
 }
 
 void db_close_database(Database* db) {
-    if (db == NULL) {
-        return;
+    if (!db) return;
+    
+    // Rollback any active transaction
+    if (db->active_txn_id != 0) {
+        printf("Warning: Rolling back active transaction %u before closing database.\n", 
+              db->active_txn_id);
+        txn_rollback(&db->txn_manager, db->active_txn_id);
+        db->active_txn_id = 0;
     }
+    
+    // Free transaction manager resources
+    txn_manager_free(&db->txn_manager);
     
     // Save current active table's root page number
     if (db->active_table) {
@@ -268,4 +282,78 @@ bool catalog_save_to_database(Catalog* catalog, const char* db_name) {
     // Implement this function or return false
     fclose(file);
     return false; // Not implemented
+}
+
+void db_init_transactions(Database* db, uint32_t capacity) {
+    if (!db) return;
+    txn_manager_init(&db->txn_manager, capacity);
+    db->active_txn_id = 0;
+}
+
+uint32_t db_begin_transaction(Database* db) {
+    if (!db) return 0;
+    
+    // If there's already an active transaction, use that
+    if (db->active_txn_id != 0 && txn_is_active(&db->txn_manager, db->active_txn_id)) {
+        printf("Using existing transaction %u\n", db->active_txn_id);
+        return db->active_txn_id;
+    }
+    
+    uint32_t txn_id = txn_begin(&db->txn_manager);
+    if (txn_id != 0) {
+        db->active_txn_id = txn_id;
+    }
+    return txn_id;
+}
+
+bool db_commit_transaction(Database* db) {
+    if (!db || db->active_txn_id == 0) {
+        printf("No active transaction to commit.\n");
+        return false;
+    }
+    
+    bool result = txn_commit(&db->txn_manager, db->active_txn_id);
+    if (result) {
+        db->active_txn_id = 0;
+    }
+    return result;
+}
+
+bool db_rollback_transaction(Database* db) {
+    if (!db || db->active_txn_id == 0) {
+        printf("No active transaction to rollback.\n");
+        return false;
+    }
+    
+    bool result = txn_rollback(&db->txn_manager, db->active_txn_id);
+    if (result) {
+        db->active_txn_id = 0;
+    }
+    return result;
+}
+
+bool db_set_active_transaction(Database* db, uint32_t txn_id) {
+    if (!db) return false;
+    
+    if (txn_id == 0) {
+        db->active_txn_id = 0;
+        return true;
+    }
+    
+    if (txn_is_active(&db->txn_manager, txn_id)) {
+        db->active_txn_id = txn_id;
+        return true;
+    }
+    
+    return false;
+}
+
+void db_enable_transactions(Database* db) {
+    if (!db) return;
+    txn_manager_enable(&db->txn_manager);
+}
+
+void db_disable_transactions(Database* db) {
+    if (!db) return;
+    txn_manager_disable(&db->txn_manager);
 }
