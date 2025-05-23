@@ -6,6 +6,7 @@
 #include "pager.h"
 #include "schema.h"
 #include "transaction.h"
+#include "acl.h"  // Include the new header
 
 typedef struct {
     char name[256];         // Database name
@@ -13,6 +14,8 @@ typedef struct {
     Table* active_table;    // Currently active table
     TransactionManager txn_manager;  // Transaction manager
     uint32_t active_txn_id;          // Currently active transaction
+    ACL acl;               // Access control list
+    bool auth_required;    // Whether authentication is required
 } Database;
 
 // Create a database directory structure
@@ -47,6 +50,12 @@ void db_enable_transactions(Database* db);
 
 // Disable transactions for the database
 void db_disable_transactions(Database* db);
+
+// Enable authentication for the database
+void db_enable_auth(Database* db);
+
+// Disable authentication for the database
+void db_disable_auth(Database* db);
 
 // Close the database
 void db_close_database(Database* db);

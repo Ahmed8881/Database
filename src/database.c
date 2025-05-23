@@ -82,6 +82,19 @@ Database* db_create_database(const char* name) {
     if (db) {
         db_init_transactions(db, 10);  // Support up to 10 concurrent transactions
     }
+    
+    // Initialize ACL
+    acl_init(&db->acl);
+    
+    // Create default admin user with the correct password 'jhaz'
+    acl_create_admin(&db->acl, "admin", "jhaz");
+    
+    // Save ACL
+    acl_save(&db->acl, name);
+    
+    // By default, auth is required
+    db->auth_required = true;
+    
     return db;
 }
 
@@ -159,6 +172,17 @@ Database* db_open_database(const char* name) {
     }
     
     db_init_transactions(db, 10);  // Support up to 10 concurrent transactions
+    // Load ACL
+    if (!acl_load(&db->acl, name)) {
+        // If ACL loading fails, create a default one
+        acl_init(&db->acl);
+        acl_create_admin(&db->acl, "admin", "admin");
+        acl_save(&db->acl, name);
+    }
+    
+    // By default, auth is required
+    db->auth_required = true;
+    
     return db;
 }
 
@@ -264,6 +288,9 @@ void db_close_database(Database* db) {
     // Save catalog before closing
     catalog_save(&db->catalog, db->name);
     
+    // Save ACL before closing
+    acl_save(&db->acl, db->name);
+    
     free(db);
 }
 
@@ -303,6 +330,7 @@ uint32_t db_begin_transaction(Database* db) {
     if (txn_id != 0) {
         db->active_txn_id = txn_id;
     }
+    
     return txn_id;
 }
 
@@ -312,11 +340,12 @@ bool db_commit_transaction(Database* db) {
         return false;
     }
     
-    bool result = txn_commit(&db->txn_manager, db->active_txn_id);
-    if (result) {
+    bool success = txn_commit(&db->txn_manager, db->active_txn_id);
+    if (success) {
         db->active_txn_id = 0;
     }
-    return result;
+    
+    return success;
 }
 
 bool db_rollback_transaction(Database* db) {
@@ -325,27 +354,24 @@ bool db_rollback_transaction(Database* db) {
         return false;
     }
     
-    bool result = txn_rollback(&db->txn_manager, db->active_txn_id);
-    if (result) {
+    bool success = txn_rollback(&db->txn_manager, db->active_txn_id);
+    if (success) {
         db->active_txn_id = 0;
     }
-    return result;
+    
+    return success;
 }
 
 bool db_set_active_transaction(Database* db, uint32_t txn_id) {
     if (!db) return false;
     
-    if (txn_id == 0) {
-        db->active_txn_id = 0;
-        return true;
+    if (txn_id == 0 || !txn_is_active(&db->txn_manager, txn_id)) {
+        printf("Invalid transaction ID or transaction not active.\n");
+        return false;
     }
     
-    if (txn_is_active(&db->txn_manager, txn_id)) {
-        db->active_txn_id = txn_id;
-        return true;
-    }
-    
-    return false;
+    db->active_txn_id = txn_id;
+    return true;
 }
 
 void db_enable_transactions(Database* db) {
@@ -355,5 +381,23 @@ void db_enable_transactions(Database* db) {
 
 void db_disable_transactions(Database* db) {
     if (!db) return;
+    
+    // If there's an active transaction, rollback first
+    if (db->active_txn_id != 0) {
+        db_rollback_transaction(db);
+    }
+    
     txn_manager_disable(&db->txn_manager);
+}
+
+void db_enable_auth(Database* db) {
+    if (!db) return;
+    db->auth_required = true;
+    printf("Authentication enabled for database '%s'.\n", db->name);
+}
+
+void db_disable_auth(Database* db) {
+    if (!db) return;
+    db->auth_required = false;
+    printf("Authentication disabled for database '%s'.\n", db->name);
 }

@@ -17,7 +17,7 @@ all: $(EXECUTABLE)
 	@mkdir -p Database
 $(EXECUTABLE): $(OBJECTS)
 	@mkdir -p $(BIN_DIR)
-	$(CC) $(OBJECTS) -o $@
+	$(CC) $(OBJECTS) -o $@ -lcrypto
 
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)
@@ -25,7 +25,7 @@ $(OBJ_DIR)/%.o: %.c
 
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache 
+	rm -rf $(OBJ_DIR) $(BIN_DIR) __pycache__ .pytest_cache Database
 
 rmdb:
 	rm -rf Database
