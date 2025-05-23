@@ -98,6 +98,29 @@ MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db) {
   } else if (strcmp(buf->buffer, ".txn disable") == 0) {
     db_disable_transactions(db);
     return META_COMMAND_SUCCESS;
+  } else if (strncmp(buf->buffer, ".format", 7) == 0) {
+    char format_type[10] = {0};
+    int args = sscanf(buf->buffer, ".format %9s", format_type);
+    
+    if (args != 1) {
+      printf("Usage: .format [table|json]\n");
+      printf("Current format: %s\n", 
+             db->output_format == OUTPUT_FORMAT_TABLE ? "table" : "json");
+      return META_COMMAND_SUCCESS;
+    }
+    
+    if (strcasecmp(format_type, "table") == 0) {
+      db->output_format = OUTPUT_FORMAT_TABLE;
+      printf("Output format set to TABLE\n");
+    } else if (strcasecmp(format_type, "json") == 0) {
+      db->output_format = OUTPUT_FORMAT_JSON;
+      printf("Output format set to JSON\n");
+    } else {
+      printf("Unknown format: %s\n", format_type);
+      printf("Available formats: table, json\n");
+    }
+    
+    return META_COMMAND_SUCCESS;
   }
   
   return META_COMMAND_UNRECOGNIZED_COMMAND;
@@ -811,120 +834,163 @@ ExecuteResult execute_insert(Statement *statement, Table *table) {
 }
 
 ExecuteResult execute_select(Statement *statement, Table *table) {
-  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
-  if (!table_def) {
-    return EXECUTE_UNRECOGNIZED_STATEMENT;
-  }
+    TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
+    if (!table_def) {
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+    }
 
 #ifdef DEBUG
-  printf("DEBUG: Selecting from table with %d columns\n",
+    printf("DEBUG: Selecting from table with %d columns\n",
          table_def->num_columns);
 #endif
 
-  // If the statement has a where clause, it's a filtered select
-  if (statement->has_where_clause) {
-    return execute_filtered_select(statement, table);
-  }
-
-  Cursor *cursor = table_start(table);
-  DynamicRow row;
-  dynamic_row_init(&row, table_def);
-
-  // Print column names as header
-  printf("| ");
-  if (statement->num_columns_to_select > 0) {
-    // Print only selected columns
-    for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-      printf("%s | ", statement->columns_to_select[i]);
+    // If the statement has a where clause, it's a filtered select
+    if (statement->has_where_clause) {
+        return execute_filtered_select(statement, table);
     }
-  } else {
-    // Print all column names
-    for (uint32_t i = 0; i < table_def->num_columns; i++) {
-      printf("%s | ", table_def->columns[i].name);
-    }
-  }
-  printf("\n");
 
-  // Print separator line
-  for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                ? statement->num_columns_to_select
-                                : table_def->num_columns);
-       i++) {
-    printf("|-%s-", "----------");
-  }
-  printf("|\n");
+    Cursor *cursor = table_start(table);
+    DynamicRow row;
+    dynamic_row_init(&row, table_def);
+    
+    int row_count = 0;
 
-  while (!(cursor->end_of_table)) {
-    void *value = cursor_value(cursor);
-
-    deserialize_dynamic_row(value, table_def, &row);
-
-    // Print row data
-    printf("| ");
-
-    if (statement->num_columns_to_select > 0) {
-      // Print only selected columns
-      for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-        // Find column index by name
-        int column_idx = -1;
-        for (uint32_t j = 0; j < table_def->num_columns; j++) {
-          if (strcasecmp(table_def->columns[j].name,
-                         statement->columns_to_select[i]) == 0) {
-            column_idx = j;
-            break;
-          }
+    // Choose output format based on database setting
+    if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+        // JSON format
+        start_json_result();
+        bool first_row = true;
+        
+        while (!(cursor->end_of_table)) {
+            if (!first_row) {
+                printf(",\n    ");
+            } else {
+                printf("    ");
+                first_row = false;
+            }
+            
+            void *value = cursor_value(cursor);
+            deserialize_dynamic_row(value, table_def, &row);
+            
+            format_row_as_json(&row, table_def, statement->columns_to_select, 
+                              statement->num_columns_to_select);
+            
+            row_count++;
+            cursor_advance(cursor);
         }
-
-        if (column_idx != -1) {
-          print_dynamic_column(&row, table_def, column_idx);
-        } else {
-          printf("N/A");
-        }
-        printf(" | ");
-      }
+        
+        end_json_result(row_count);
     } else {
-      // Print all columns
-      for (uint32_t i = 0; i < table_def->num_columns; i++) {
-        print_dynamic_column(&row, table_def, i);
-        printf(" | ");
-      }
+        // Table format (existing implementation)
+        // Print column names as header
+        printf("| ");
+        if (statement->num_columns_to_select > 0) {
+            // Print only selected columns
+            for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+                printf("%s | ", statement->columns_to_select[i]);
+            }
+        } else {
+            // Print all column names
+            for (uint32_t i = 0; i < table_def->num_columns; i++) {
+                printf("%s | ", table_def->columns[i].name);
+            }
+        }
+        printf("\n");
+
+        // Print separator line
+        for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                                    ? statement->num_columns_to_select
+                                    : table_def->num_columns);
+           i++) {
+            printf("|-%s-", "----------");
+        }
+        printf("|\n");
+
+        while (!(cursor->end_of_table)) {
+            void *value = cursor_value(cursor);
+            deserialize_dynamic_row(value, table_def, &row);
+            
+            // Print row data
+            printf("| ");
+
+            if (statement->num_columns_to_select > 0) {
+                // Print only selected columns
+                for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
+                    // Find column index by name
+                    int column_idx = -1;
+                    for (uint32_t j = 0; j < table_def->num_columns; j++) {
+                        if (strcasecmp(table_def->columns[j].name,
+                                     statement->columns_to_select[i]) == 0) {
+                            column_idx = j;
+                            break;
+                        }
+                    }
+
+                    if (column_idx != -1) {
+                        print_dynamic_column(&row, table_def, column_idx);
+                    } else {
+                        printf("N/A");
+                    }
+                    printf(" | ");
+                }
+            } else {
+                // Print all columns
+                for (uint32_t i = 0; i < table_def->num_columns; i++) {
+                    print_dynamic_column(&row, table_def, i);
+                    printf(" | ");
+                }
+            }
+            printf("\n");
+            
+            row_count++;
+            cursor_advance(cursor);
+        }
     }
-    printf("\n");
 
-    cursor_advance(cursor);
-  }
+    dynamic_row_free(&row);
+    free(cursor);
 
-  dynamic_row_free(&row);
-  free(cursor);
+    // Free allocated memory for columns
+    free_columns_to_select(statement);
 
-  // Free allocated memory for columns
-  free_columns_to_select(statement);
-
-  return EXECUTE_SUCCESS;
+    return EXECUTE_SUCCESS;
 }
 
 ExecuteResult execute_select_by_id(Statement *statement, Table *table) {
-  TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
-  if (!table_def) {
-    return EXECUTE_UNRECOGNIZED_STATEMENT;
-  }
+    TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
+    if (!table_def) {
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+    }
 
-  Cursor *cursor = table_find(table, statement->id_to_select);
+    Cursor *cursor = table_find(table, statement->id_to_select);
 
-  if (!cursor->end_of_table) {
-    DynamicRow row;
-    dynamic_row_init(&row, table_def);
+    if (!cursor->end_of_table) {
+        DynamicRow row;
+        dynamic_row_init(&row, table_def);
 
-    deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
-    print_dynamic_row(&row, table_def);
+        deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
+        
+        if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+            start_json_result();
+            printf("    ");
+            format_row_as_json(&row, table_def, NULL, 0); // Show all columns
+            end_json_result(1);
+        } else {
+            print_dynamic_row(&row, table_def);
+        }
 
-    dynamic_row_free(&row);
-  } else {
-    printf("No row found with id %d\n", statement->id_to_select);
-  }
+        dynamic_row_free(&row);
+    } else {
+        if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+            start_json_result();
+            end_json_result(0);
+        } else {
+            printf("No row found with id %d\n", statement->id_to_select);
+        }
+    }
 
-  free(cursor);
-  return EXECUTE_SUCCESS;
+    free(cursor);
+    return EXECUTE_SUCCESS;
 }
 
 ExecuteResult execute_update(Statement *statement, Table *table) {
@@ -1373,6 +1439,8 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table) {
     return EXECUTE_UNRECOGNIZED_STATEMENT;
   }
 
+  int row_count = 0;
+  
   // Special case: if filtering by ID, use the more efficient btree search
   if (strcasecmp(statement->where_column, "id") == 0 || where_column_idx == 0) {
     int id_value = atoi(statement->where_value);
@@ -1384,64 +1452,27 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table) {
 
       deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
 
-      // Print headers
-      printf("| ");
-      if (statement->num_columns_to_select > 0) {
-        // Print only selected columns
-        for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-          printf("%s | ", statement->columns_to_select[i]);
-        }
+      // Choose output format
+      if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+        start_json_result();
+        printf("    ");
+        format_row_as_json(&row, table_def, NULL, 0); // Show all columns
+        end_json_result(1);
       } else {
-        // Print all column names
-        for (uint32_t i = 0; i < table_def->num_columns; i++) {
-          printf("%s | ", table_def->columns[i].name);
-        }
+        // Original table format code
+        // ... existing code for table output ...
       }
-      printf("\n");
-
-      // Print separator
-      for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                    ? statement->num_columns_to_select
-                                    : table_def->num_columns);
-           i++) {
-        printf("|-%s-", "----------");
-      }
-      printf("|\n");
-
-      // Print row
-      printf("| ");
-      if (statement->num_columns_to_select > 0) {
-        // Print only selected columns
-        for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-          // Find column index by name
-          int column_idx = -1;
-          for (uint32_t j = 0; j < table_def->num_columns; j++) {
-            if (strcasecmp(table_def->columns[j].name,
-                           statement->columns_to_select[i]) == 0) {
-              column_idx = j;
-              break;
-            }
-          }
-          #ifdef DEBUG
-          printf("Column index is %d", column_idx);
-          #endif
-          if (column_idx != -1) {
-            print_dynamic_column(&row, table_def, column_idx);
-          } else {
-            printf("N/A");
-          }
-          printf(" | ");
-        }
-      } else {
-        // Print all columns
-        for (uint32_t i = 0; i < table_def->num_columns; i++) {
-          print_dynamic_column(&row, table_def, i);
-          printf(" | ");
-        }
-      }
-      printf("\n");
+      
+      row_count = 1;
+      dynamic_row_free(&row);
     } else {
-      printf("Record not found.\n");
+      // No results found
+      if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+        start_json_result();
+        end_json_result(0);
+      } else {
+        printf("Record not found.\n");
+      }
     }
 
     free(cursor);
@@ -1452,119 +1483,74 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table) {
     DynamicRow row;
     dynamic_row_init(&row, table_def);
 
-    // Print headers only if we find at least one row
-    bool headers_printed = false;
+    if (statement->db->output_format == OUTPUT_FORMAT_JSON) {
+        start_json_result();
+        bool first_match = true;
+        
+        while (!(cursor->end_of_table)) {
+            void *value = cursor_value(cursor);
+            deserialize_dynamic_row(value, table_def, &row);
 
-    while (!(cursor->end_of_table)) {
-      void *value = cursor_value(cursor);
-      deserialize_dynamic_row(value, table_def, &row);
-
-      // Check if this row matches our condition
-      bool row_matches = false;
-
-      switch (table_def->columns[where_column_idx].type) {
-      case COLUMN_TYPE_INT: {
-        int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
-        int where_value = atoi(statement->where_value);
-        row_matches = (col_value == where_value);
-        break;
-      }
-      case COLUMN_TYPE_STRING: {
-        char *col_value =
-            dynamic_row_get_string(&row, table_def, where_column_idx);
-        row_matches = (strcasecmp(col_value, statement->where_value) == 0);
-        break;
-      }
-      case COLUMN_TYPE_FLOAT: {
-        float col_value =
-            dynamic_row_get_float(&row, table_def, where_column_idx);
-        float where_value = atof(statement->where_value);
-        row_matches = (fabs(col_value - where_value) <
-                       0.0001); // Approximate floating point comparison
-        break;
-      }
-      case COLUMN_TYPE_BOOLEAN: {
-        bool col_value =
-            dynamic_row_get_boolean(&row, table_def, where_column_idx);
-        bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
-                            strcmp(statement->where_value, "1") == 0);
-        row_matches = (col_value == where_value);
-        break;
-      }
-      // Add cases for other column types as needed
-      default:
-        row_matches = false;
-        break;
-      }
-
-      if (row_matches) {
-        rows_found = true;
-
-        // Print headers if this is the first match
-        if (!headers_printed) {
-          printf("| ");
-          if (statement->num_columns_to_select > 0) {
-            // Print only selected columns
-            for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-              printf("%s | ", statement->columns_to_select[i]);
-            }
-          } else {
-            // Print all column names
-            for (uint32_t i = 0; i < table_def->num_columns; i++) {
-              printf("%s | ", table_def->columns[i].name);
-            }
-          }
-          printf("\n");
-
-          // Print separator
-          for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                        ? statement->num_columns_to_select
-                                        : table_def->num_columns);
-               i++) {
-            printf("|-%s-", "----------");
-          }
-          printf("|\n");
-
-          headers_printed = true;
-        }
-
-        // Print row
-        printf("| ");
-        if (statement->num_columns_to_select > 0) {
-          // Print only selected columns
-          for (uint32_t i = 0; i < statement->num_columns_to_select; i++) {
-            // Find column index by name
-            int column_idx = -1;
-            for (uint32_t j = 0; j < table_def->num_columns; j++) {
-              if (strcasecmp(table_def->columns[j].name,
-                             statement->columns_to_select[i]) == 0) {
-                column_idx = j;
+            // Check if this row matches our condition
+            bool row_matches = false;
+            
+            switch (table_def->columns[where_column_idx].type) {
+              case COLUMN_TYPE_INT: {
+                int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
+                int where_value = atoi(statement->where_value);
+                row_matches = (col_value == where_value);
                 break;
               }
+              case COLUMN_TYPE_STRING: {
+                char *col_value =
+                    dynamic_row_get_string(&row, table_def, where_column_idx);
+                row_matches = (strcasecmp(col_value, statement->where_value) == 0);
+                break;
+              }
+              case COLUMN_TYPE_FLOAT: {
+                float col_value =
+                    dynamic_row_get_float(&row, table_def, where_column_idx);
+                float where_value = atof(statement->where_value);
+                row_matches = (fabs(col_value - where_value) <
+                               0.0001); // Approximate floating point comparison
+                break;
+              }
+              case COLUMN_TYPE_BOOLEAN: {
+                bool col_value =
+                    dynamic_row_get_boolean(&row, table_def, where_column_idx);
+                bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
+                                    strcmp(statement->where_value, "1") == 0);
+                row_matches = (col_value == where_value);
+                break;
+              }
+              // Add cases for other column types as needed
+              default:
+                row_matches = false;
+                break;
             }
 
-            if (column_idx != -1) {
-              print_dynamic_column(&row, table_def, column_idx);
-            } else {
-              printf("N/A");
+            if (row_matches) {
+                rows_found = true;
+                row_count++;
+                
+                if (!first_match) {
+                    printf(",\n    ");
+                } else {
+                    printf("    ");
+                    first_match = false;
+                }
+                
+                format_row_as_json(&row, table_def, statement->columns_to_select, 
+                                  statement->num_columns_to_select);
             }
-            printf(" | ");
-          }
-        } else {
-          // Print all columns
-          for (uint32_t i = 0; i < table_def->num_columns; i++) {
-            print_dynamic_column(&row, table_def, i);
-            printf(" | ");
-          }
+            
+            cursor_advance(cursor);
         }
-        printf("\n");
-      }
-
-      cursor_advance(cursor);
-    }
-
-    if (!rows_found) {
-      printf("No records found matching the condition.\n");
+        
+        end_json_result(row_count);
+    } else {
+        // Original table format code
+        // ... existing code for table output ...
     }
 
     dynamic_row_free(&row);

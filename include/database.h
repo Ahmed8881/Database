@@ -7,12 +7,18 @@
 #include "schema.h"
 #include "transaction.h"
 
+typedef enum {
+    OUTPUT_FORMAT_TABLE,
+    OUTPUT_FORMAT_JSON
+} OutputFormat;
+
 typedef struct {
     char name[256];         // Database name
     Catalog catalog;        // Catalog of tables
     Table* active_table;    // Currently active table
     TransactionManager txn_manager;  // Transaction manager
     uint32_t active_txn_id;          // Currently active transaction
+    OutputFormat output_format;      // Output format setting
 } Database;
 
 // Create a database directory structure

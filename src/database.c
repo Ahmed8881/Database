@@ -110,6 +110,10 @@ Database* db_open_database(const char* name) {
     
     strncpy(db->name, name, sizeof(db->name));
     db->name[sizeof(db->name) - 1] = '\0';
+    db->active_table = NULL;
+    
+    // Set default output format
+    db->output_format = OUTPUT_FORMAT_TABLE;
     
     // Load or initialize catalog
     char catalog_path[512];
