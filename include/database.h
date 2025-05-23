@@ -6,6 +6,7 @@
 #include "pager.h"
 #include "schema.h"
 #include "transaction.h"
+<<<<<<< HEAD
 #include "auth.h"  // Add this include
 
 #define MAX_OPEN_INDEXES 16
@@ -34,6 +35,18 @@ typedef struct
     char table_directory[512];
     OpenIndexes active_indexes;     // Add this field
     UserManager user_manager;       // Add user management
+=======
+#include "acl.h"  // Include the new header
+
+typedef struct {
+    char name[256];         // Database name
+    Catalog catalog;        // Catalog of tables
+    Table* active_table;    // Currently active table
+    TransactionManager txn_manager;  // Transaction manager
+    uint32_t active_txn_id;          // Currently active transaction
+    ACL acl;               // Access control list
+    bool auth_required;    // Whether authentication is required
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 } Database;
 
 // Create a database directory structure
@@ -68,6 +81,12 @@ void db_enable_transactions(Database *db);
 
 // Disable transactions for the database
 void db_disable_transactions(Database *db);
+
+// Enable authentication for the database
+void db_enable_auth(Database* db);
+
+// Disable authentication for the database
+void db_disable_auth(Database* db);
 
 // Close the database
 void db_close_database(Database *db);

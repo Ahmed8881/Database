@@ -32,6 +32,7 @@ typedef enum
   EXECUTE_SUCCESS,
   EXECUTE_DUPLICATE_KEY,
   EXECUTE_TABLE_FULL,
+<<<<<<< HEAD
   // Add these new result types
   EXECUTE_ERROR,
   EXECUTE_TABLE_NOT_FOUND,
@@ -41,6 +42,11 @@ typedef enum
   EXECUTE_AUTH_FAILED,       // Add another useful enum value
   // Any other existing values...
   EXECUTE_UNRECOGNIZED_STATEMENT
+=======
+  EXECUTE_UNRECOGNIZED_STATEMENT,
+  EXECUTE_DUPLICATE_KEY,
+  EXECUTE_FAILED  // Add this new value
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 } ExecuteResult;
 
 typedef enum
@@ -55,12 +61,23 @@ typedef enum
   STATEMENT_SHOW_TABLES,
   STATEMENT_CREATE_DATABASE,
   STATEMENT_USE_DATABASE,
+<<<<<<< HEAD
   STATEMENT_CREATE_INDEX,
   STATEMENT_SHOW_INDEXES,
   // Add new statement types for authentication
   STATEMENT_LOGIN,
   STATEMENT_LOGOUT,
   STATEMENT_CREATE_USER
+=======
+  STATEMENT_CREATE_USER,
+  STATEMENT_DROP_USER,
+  STATEMENT_GRANT_ROLE,
+  STATEMENT_REVOKE_ROLE, 
+  STATEMENT_LOGIN,
+  STATEMENT_LOGOUT,
+  STATEMENT_ENABLE_AUTH,
+  STATEMENT_DISABLE_AUTH
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 } StatementType;
 
 typedef struct
@@ -68,8 +85,8 @@ typedef struct
   StatementType type;
   Row row_to_insert;
   uint32_t id_to_select;
-  uint32_t id_to_update;
   uint32_t id_to_delete;
+<<<<<<< HEAD
 
   // Fields for update operation
   char column_to_update[MAX_COLUMN_NAME];
@@ -105,9 +122,42 @@ typedef struct
   char auth_username[64];
   char auth_password[64];
   UserRole auth_role;
+=======
+  uint32_t id_to_update;
+  
+  // For table operations
+  char table_name[MAX_TABLE_NAME];
+  ColumnDef columns[MAX_COLUMNS];
+  uint32_t num_columns;
+  
+  // For database operations
+  char database_name[256];
+  
+  // For update operations
+  char column_to_update[MAX_COLUMN_NAME];
+  char update_value[COLUMN_EMAIL_SIZE];
+  
+  // For dynamic value handling
+  char** values;
+  uint32_t num_values;
+  
+  // Reference to database
+  Database* db;
+  
+  // For user management
+  struct {
+    char username[MAX_USERNAME_SIZE];
+    char password[MAX_PASSWORD_SIZE];
+    RoleType role;
+    bool role_specified;  // Add this field to track if a role was specified
+    char role_str[32];    // Add a string field to store the role name
+  } user;
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 } Statement;
 
+// Function to free allocated column selections
 void free_columns_to_select(Statement *statement);
+
 // Meta command function
 MetaCommandResult do_meta_command(Input_Buffer *buf, Database *db);
 
@@ -138,6 +188,7 @@ ExecuteResult execute_database_statement(Statement *statement, Database **db);
 PrepareResult prepare_create_index(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_create_index(Statement *statement, Database *db);
 
+<<<<<<< HEAD
 // Add these declarations
 PrepareResult prepare_show_indexes(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_show_indexes(Statement *statement, Database *db);
@@ -155,3 +206,30 @@ ExecuteResult execute_logout(Statement *statement, Database *db);
 ExecuteResult execute_create_user(Statement *statement, Database *db);
 
 #endif // COMMAND_PROCESSOR_H
+=======
+// ACL functions
+bool check_permission(Database* db, Statement* statement);
+PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_drop_user(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_grant_role(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_revoke_role(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_login(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_logout(Input_Buffer *buf, Statement *statement);
+
+ExecuteResult execute_create_user(Statement *statement, Database *db);
+ExecuteResult execute_drop_user(Statement *statement, Database *db);
+ExecuteResult execute_grant_role(Statement *statement, Database *db);
+ExecuteResult execute_revoke_role(Statement *statement, Database *db);
+ExecuteResult execute_login(Statement *statement, Database *db);
+ExecuteResult execute_logout(Statement *statement, Database *db);
+ExecuteResult execute_enable_auth(Statement *statement, Database *db);
+ExecuteResult execute_disable_auth(Statement *statement, Database *db);
+
+// Utility functions
+void print_constants();
+
+// Add this function declaration to support user role checking
+RoleType acl_get_user_role(const ACL* acl, const char* username);
+
+#endif
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)

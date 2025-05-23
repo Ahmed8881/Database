@@ -6,6 +6,7 @@ Input_Buffer *newInputBuffer() {
   Input_Buffer *buf = (Input_Buffer *)malloc(sizeof(Input_Buffer));
   buf->buffer = NULL;
   buf->buffer_length = buf->input_length = 0;
+  buf->prompt_displayed = false; // Initialize prompt_displayed
   return buf;
 }
 
@@ -35,6 +36,15 @@ void read_input(Input_Buffer *buf) {
     buf->buffer_length = buffer_size;
   }
 
+<<<<<<< HEAD
+=======
+  // Only show prompt if it hasn't been displayed yet
+  if (!buf->prompt_displayed) {
+    print_prompt();
+    buf->prompt_displayed = true; // Set the flag to true after displaying
+  }
+
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
   size_t position = 0;
   int c;
 

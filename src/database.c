@@ -112,11 +112,27 @@ Database *db_create_database(const char *name)
     {
         db_init_transactions(db, 10); // Support up to 10 concurrent transactions
     }
+<<<<<<< HEAD
 
     // Initialize user manager and create default admin user
     auth_init(&db->user_manager);
     auth_save_users(&db->user_manager, name);
 
+=======
+    
+    // Initialize ACL
+    acl_init(&db->acl);
+    
+    // Create default admin user with the correct password 'jhaz'
+    acl_create_admin(&db->acl, "admin", "jhaz");
+    
+    // Save ACL
+    acl_save(&db->acl, name);
+    
+    // By default, auth is required
+    db->auth_required = true;
+    
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
     return db;
 }
 
@@ -212,12 +228,28 @@ Database *db_open_database(const char *name)
             }
         }
     }
+<<<<<<< HEAD
 
     db_init_transactions(db, 10); // Support up to 10 concurrent transactions
 
     // Load user manager
     auth_load_users(&db->user_manager, name);
 
+=======
+    
+    db_init_transactions(db, 10);  // Support up to 10 concurrent transactions
+    // Load ACL
+    if (!acl_load(&db->acl, name)) {
+        // If ACL loading fails, create a default one
+        acl_init(&db->acl);
+        acl_create_admin(&db->acl, "admin", "admin");
+        acl_save(&db->acl, name);
+    }
+    
+    // By default, auth is required
+    db->auth_required = true;
+    
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
     return db;
 }
 
@@ -345,10 +377,17 @@ void db_close_database(Database *db)
 
     // Save catalog before closing
     catalog_save(&db->catalog, db->name);
+<<<<<<< HEAD
 
     // Clean up auth
     auth_cleanup(&db->user_manager);
 
+=======
+    
+    // Save ACL before closing
+    acl_save(&db->acl, db->name);
+    
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
     free(db);
 }
 
@@ -396,6 +435,7 @@ uint32_t db_begin_transaction(Database *db)
     {
         db->active_txn_id = txn_id;
     }
+    
     return txn_id;
 }
 
@@ -406,13 +446,20 @@ bool db_commit_transaction(Database *db)
         printf("No active transaction to commit.\n");
         return false;
     }
+<<<<<<< HEAD
 
     bool result = txn_commit(&db->txn_manager, db->active_txn_id);
     if (result)
     {
+=======
+    
+    bool success = txn_commit(&db->txn_manager, db->active_txn_id);
+    if (success) {
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
         db->active_txn_id = 0;
     }
-    return result;
+    
+    return success;
 }
 
 bool db_rollback_transaction(Database *db)
@@ -422,15 +469,23 @@ bool db_rollback_transaction(Database *db)
         printf("No active transaction to rollback.\n");
         return false;
     }
+<<<<<<< HEAD
 
     bool result = txn_rollback(&db->txn_manager, db->active_txn_id);
     if (result)
     {
+=======
+    
+    bool success = txn_rollback(&db->txn_manager, db->active_txn_id);
+    if (success) {
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
         db->active_txn_id = 0;
     }
-    return result;
+    
+    return success;
 }
 
+<<<<<<< HEAD
 bool db_set_active_transaction(Database *db, uint32_t txn_id)
 {
     if (!db)
@@ -449,6 +504,18 @@ bool db_set_active_transaction(Database *db, uint32_t txn_id)
     }
 
     return false;
+=======
+bool db_set_active_transaction(Database* db, uint32_t txn_id) {
+    if (!db) return false;
+    
+    if (txn_id == 0 || !txn_is_active(&db->txn_manager, txn_id)) {
+        printf("Invalid transaction ID or transaction not active.\n");
+        return false;
+    }
+    
+    db->active_txn_id = txn_id;
+    return true;
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 }
 
 void db_enable_transactions(Database *db)
@@ -458,6 +525,7 @@ void db_enable_transactions(Database *db)
     txn_manager_enable(&db->txn_manager);
 }
 
+<<<<<<< HEAD
 void db_disable_transactions(Database *db)
 {
     if (!db)
@@ -568,4 +636,27 @@ bool db_is_authenticated(Database *db) {
 
 bool db_check_permission(Database *db, const char *operation) {
     return auth_check_permission(&db->user_manager, operation);
+=======
+void db_disable_transactions(Database* db) {
+    if (!db) return;
+    
+    // If there's an active transaction, rollback first
+    if (db->active_txn_id != 0) {
+        db_rollback_transaction(db);
+    }
+    
+    txn_manager_disable(&db->txn_manager);
+}
+
+void db_enable_auth(Database* db) {
+    if (!db) return;
+    db->auth_required = true;
+    printf("Authentication enabled for database '%s'.\n", db->name);
+}
+
+void db_disable_auth(Database* db) {
+    if (!db) return;
+    db->auth_required = false;
+    printf("Authentication disabled for database '%s'.\n", db->name);
+>>>>>>> bf47354 (Implement Access Control List (ACL) functionality with user authentication)
 }
