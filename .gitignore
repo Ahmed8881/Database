@@ -5,6 +5,8 @@
 # Prerequisites
 *.d
 
+
+
 # Object files
 *.o
 *.ko
@@ -57,6 +59,7 @@ dkms.conf
 obj/
 bin/
 __pycache__/
+.vscode/
 
 # End of https://www.toptal.com/developers/gitignore/api/c
 *.db
