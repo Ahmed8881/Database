@@ -1,0 +1,94 @@
+{
+    "databases": [
+        "school",
+        "company"
+    ],
+    "tables": {
+        "users": {
+            "database": "company",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "INT"
+                },
+                {
+                    "name": "name",
+                    "type": "STRING"
+                },
+                {
+                    "name": "email",
+                    "type": "STRING"
+                }
+            ]
+        },
+        "students": {
+            "database": "school",
+            "columns": [
+                {
+                    "name": "id",
+                    "type": "INT"
+                },
+                {
+                    "name": "name",
+                    "type": "STRING"
+                },
+                {
+                    "name": "father_name",
+                    "type": "STRING"
+                },
+                {
+                    "name": "gpa",
+                    "type": "FLOAT"
+                },
+                {
+                    "name": "age",
+                    "type": "INT"
+                },
+                {
+                    "name": "gender",
+                    "type": "STRING"
+                }
+            ]
+        }
+    },
+    "records": {
+        "users": [
+            {
+                "id": 2,
+                "name": "Jane Smith",
+                "email": "jane@example.com"
+            },
+            {
+                "id": 12,
+                "name": "M Ahmed Butt",
+                "email": "admin@kurras.com"
+            }
+        ],
+        "students": [
+            {
+                "id": 1,
+                "name": "John Doe",
+                "father_name": "Richard Roe",
+                "gpa": 3.5,
+                "age": 20,
+                "gender": "M"
+            },
+            {
+                "id": 2,
+                "name": "Jane Smith",
+                "father_name": "John Smith",
+                "gpa": 3.8,
+                "age": 22,
+                "gender": "F"
+            },
+            {
+                "id": 3,
+                "name": "Alice Johnson",
+                "father_name": "Robert Johnson",
+                "gpa": 3.2,
+                "age": 19,
+                "gender": "F"
+            }
+        ]
+    }
+}
