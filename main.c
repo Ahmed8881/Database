@@ -1,11 +1,6 @@
 #include "include/command_processor.h"
 #include "include/input_handling.h"
-#include "include/table.h"
-#include "include/btree.h"
-#include "include/cursor.h"
-#include "include/pager.h"
 #include "include/database.h"
-#include "include/catalog.h"
 #include "include/auth.h"
 #include <string.h>
 #include <strings.h> // Add this for strncasecmp
