@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "table.h": "c"
+        "table.h": "c",
+        "secondary_index.h": "c",
+        "input_handling.h": "c"
     }
 }

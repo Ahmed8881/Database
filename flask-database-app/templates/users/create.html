@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Create User - Database Organization{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('list_users') }}">Users</a></li>
+        <li class="breadcrumb-item active">Create</li>
+    </ol>
+</nav>
+
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title m-0">Create New User</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('create_user') }}">
+            <div class="mb-3">
+                <label for="id" class="form-label">ID</label>
+                <input type="number" class="form-control" id="id" name="id" 
+                       value="{{ user.id if user.id is defined else '' }}" required>
+                <div class="form-text">Enter a unique numeric ID for this user.</div>
+            </div>
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" 
+                       value="{{ user.name if user.name is defined else '' }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" 
+                       value="{{ user.email if user.email is defined else '' }}" required>
+            </div>
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('list_users') }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

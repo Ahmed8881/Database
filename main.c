@@ -7,7 +7,7 @@
 #include "include/database.h"
 #include "include/catalog.h"
 #include <string.h>
-#include <strings.h>
+// #include <strings.h>
 
 int main(int argc, char *argv[]) {
     (void)argc; // Mark as used to avoid warning
@@ -44,6 +44,37 @@ int main(int argc, char *argv[]) {
             
             switch (do_meta_command(input_buf, db)) {
                 case META_COMMAND_SUCCESS:
+                    continue;
+                case META_COMMAND_TXN_BEGIN:
+                    if (!db) {
+                        printf("Error: No database is currently open.\n");
+                    } else {
+                        db_begin_transaction(db);
+                    }
+                    continue;
+                case META_COMMAND_TXN_COMMIT:
+                    if (!db) {
+                        printf("Error: No database is currently open.\n");
+                    } else {
+                        db_commit_transaction(db);
+                    }
+                    continue;
+                case META_COMMAND_TXN_ROLLBACK:
+                    if (!db) {
+                        printf("Error: No database is currently open.\n");
+                    } else {
+                        db_rollback_transaction(db);
+                    }
+                    continue;
+                case META_COMMAND_TXN_STATUS:
+                    if (!db) {
+                        printf("Error: No database is currently open.\n");
+                    } else if (db->active_txn_id == 0) {
+                        printf("No active transaction.\n");
+                    } else {
+                        printf("Current transaction: %u\n", db->active_txn_id);
+                        txn_print_status(&db->txn_manager, db->active_txn_id);
+                    }
                     continue;
                 case META_COMMAND_UNRECOGNIZED_COMMAND:
                     printf("Unrecognized command %s\n", trimmed_input);
