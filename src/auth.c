@@ -30,7 +30,7 @@ bool auth_create_user(UserManager* manager, const char* username,
             return false; // Username already exists
         }
     }
-    
+        
     // Resize if needed
     if (manager->count >= manager->capacity) {
         uint32_t new_capacity = manager->capacity * 2;
