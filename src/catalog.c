@@ -55,12 +55,14 @@ bool catalog_add_table(Catalog *catalog, const char *name, ColumnDef *columns, u
              catalog->database_name, name);
 
     // Copy safely to the destination with truncation check
-    if (strlen(filename_buffer) >= sizeof(table->filename))
-    {
+    if (strlen(filename_buffer) >= sizeof(table->filename)) {
         printf("Warning: Path too long, truncating: %s\n", filename_buffer);
     }
-    strncpy(table->filename, filename_buffer, sizeof(table->filename) - 1);
-    table->filename[sizeof(table->filename) - 1] = '\0';
+    
+    // Use memcpy + null termination instead of strncpy to avoid truncation warning
+    size_t copy_len = sizeof(table->filename) - 1;
+    memcpy(table->filename, filename_buffer, copy_len);
+    table->filename[copy_len] = '\0';
 
     catalog->num_tables++;
     return true;
@@ -180,13 +182,22 @@ bool catalog_load(Catalog *catalog, const char *db_name)
     }
 
     // Read number of tables
-    fread(&catalog->num_tables, sizeof(uint32_t), 1, file);
+    if (fread(&catalog->num_tables, sizeof(uint32_t), 1, file) != 1) {
+        fclose(file);
+        return false;
+    }
 
     // Read active table index
-    fread(&catalog->active_table, sizeof(uint32_t), 1, file);
+    if (fread(&catalog->active_table, sizeof(uint32_t), 1, file) != 1) {
+        fclose(file);
+        return false;
+    }
 
     // Read database name
-    fread(catalog->database_name, sizeof(catalog->database_name), 1, file);
+    if (fread(catalog->database_name, sizeof(catalog->database_name), 1, file) != 1) {
+        fclose(file);
+        return false;
+    }
 
     // Read each table definition
     for (uint32_t i = 0; i < catalog->num_tables; i++)

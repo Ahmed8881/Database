@@ -1,0 +1,107 @@
+❯ bin/db-project
+Welcome to Build-Your-Own-Database System
+Please login with 'LOGIN username 'password''
+Default admin credentials: username='admin', password='jhaz'
+
+db > create database test
+Error: Authentication required. Please login first.
+Use 'LOGIN username 'password'' to authenticate.
+db > LOGIN admin jhaz
+Logged in as 'admin'.
+no-db:admin> LOGOUT
+Logged out successfully.
+db > LOGIN admin 'jhaz'
+Logged in as 'admin'.
+no-db:admin> create database test
+Database created: test
+Executed.
+test:admin> use database test
+Using database: test
+Executed.
+test:admin> create table users (id INT, name STRING(30))
+Table created: users
+Executed.
+test:admin> insert into users (1,"abdul")
+Row successfully inserted with key: 1
+Executed.
+test:admin> insert into users (2,"hamid")
+Row successfully inserted with key: 2
+Executed.
+test:admin> insert into users (3,"sher") 
+Row successfully inserted with key: 3
+Executed.
+test:admin> insert into users (4,"ahmad")
+Row successfully inserted with key: 4
+Executed.
+test:admin> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(3, sher)
+(4, ahmad)
+Executed.
+test:admin> delete from users where id = 3
+Executed.
+test:admin> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(4, ahmad)
+Executed.
+test:admin> CREATE USER abdul with password '123' ROLE 'developer'
+User 'abdul' created successfully.
+User 'abdul' created successfully.
+test:admin> CREATE USER sher with password 'shera' ROLE 'user'
+User 'sher' created successfully.
+User 'sher' created successfully.
+test:admin> LOGOUT
+Logged out successfully.
+db > LOGIN abdul '123'
+Logged in as 'abdul'.
+test:abdul> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(4, ahmad)
+Executed.
+test:abdul> insert into users (5,"sher")
+Row successfully inserted with key: 5
+Executed.
+test:abdul> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(4, ahmad)
+(5, sher)
+Executed.
+test:abdul> delete from users where id = 5
+Executed.
+test:abdul> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(4, ahmad)
+Executed.
+test:abdul> LOGOUT
+Logged out successfully.
+db > LOGIN sher 'shera' 
+Logged in as 'sher'.
+test:sher> select * from users
+| (id | name | 
+|------------|------------|
+(1, abdul)
+(2, hamid)
+(4, ahmad)
+Executed.
+test:sher> insert into users (5,"sher")
+Error: Permission denied for this operation.
+You don't have sufficient privileges. Please ask an admin for assistance.
+test:sher> delete from users where id = 1 
+Error: Permission denied for this operation.
+You don't have sufficient privileges. Please ask an admin for assistance.
+test:sher> 

@@ -37,6 +37,8 @@ typedef enum
   EXECUTE_TABLE_NOT_FOUND,
   EXECUTE_TABLE_OPEN_ERROR,
   EXECUTE_INDEX_ERROR,
+  EXECUTE_PERMISSION_DENIED, // Add this missing enum value
+  EXECUTE_AUTH_FAILED,       // Add another useful enum value
   // Any other existing values...
   EXECUTE_UNRECOGNIZED_STATEMENT
 } ExecuteResult;
@@ -54,8 +56,11 @@ typedef enum
   STATEMENT_CREATE_DATABASE,
   STATEMENT_USE_DATABASE,
   STATEMENT_CREATE_INDEX,
-  STATEMENT_DROP_INDEX,
   STATEMENT_SHOW_INDEXES,
+  // Add new statement types for authentication
+  STATEMENT_LOGIN,
+  STATEMENT_LOGOUT,
+  STATEMENT_CREATE_USER
 } StatementType;
 
 typedef struct
@@ -95,6 +100,11 @@ typedef struct
   // Fields for index operations
   char index_name[MAX_INDEX_NAME];
   bool use_index; // Flag to indicate if an index should be used for queries
+
+  // Authentication fields
+  char auth_username[64];
+  char auth_password[64];
+  UserRole auth_role;
 } Statement;
 
 void free_columns_to_select(Statement *statement);
@@ -133,5 +143,15 @@ PrepareResult prepare_show_indexes(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_show_indexes(Statement *statement, Database *db);
 // Utility functions
 void print_constants();
+
+// Add new prepare functions for auth commands
+PrepareResult prepare_login(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_logout(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement);
+
+// Add new execute functions for auth commands
+ExecuteResult execute_login(Statement *statement, Database *db);
+ExecuteResult execute_logout(Statement *statement, Database *db);
+ExecuteResult execute_create_user(Statement *statement, Database *db);
 
 #endif // COMMAND_PROCESSOR_H

@@ -35,8 +35,6 @@ void read_input(Input_Buffer *buf) {
     buf->buffer_length = buffer_size;
   }
 
-  print_prompt();
-
   size_t position = 0;
   int c;
 
