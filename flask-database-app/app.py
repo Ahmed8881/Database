@@ -2,12 +2,17 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import subprocess
 import json
 import os
-from config import Config
 from db_connector import DatabaseConnector
 
 app = Flask(__name__)
-app.config.from_object(Config)
-db = DatabaseConnector(app.config['DATABASE_PATH'])
+app.config['SECRET_KEY'] = 'your_secret_key_here'
+
+# Get the absolute path to the root of your project
+project_root = os.path.dirname(os.path.abspath(__file__))
+db_root = os.path.dirname(project_root)  # Parent directory of flask-database-app
+
+# Initialize database connector
+db = DatabaseConnector(db_root)
 
 @app.route('/')
 def index():
@@ -41,9 +46,12 @@ def view_user(user_id):
 def create_user():
     """Create a new user"""
     if request.method == 'POST':
+        # Get the next available ID
+        next_id = db.get_next_id('users')
+        
         # Collect form data
         user_data = {
-            'id': int(request.form['id']),
+            'id': next_id,
             'name': request.form['name'],
             'email': request.form['email']
         }
@@ -54,10 +62,6 @@ def create_user():
             errors.append('Name is required')
         if not user_data['email']:
             errors.append('Email is required')
-        
-        # Check if ID already exists
-        if db.get_record_by_id('users', user_data['id']):
-            errors.append(f"User with ID {user_data['id']} already exists")
             
         if errors:
             for error in errors:
@@ -85,7 +89,7 @@ def edit_user(user_id):
     if request.method == 'POST':
         # Collect form data
         user_data = {
-            'id': user_id,  # Keep the same ID
+            'id': user_id,
             'name': request.form['name'],
             'email': request.form['email']
         }
@@ -115,42 +119,12 @@ def edit_user(user_id):
 @app.route('/users/<int:user_id>/delete', methods=['POST'])
 def delete_user(user_id):
     """Delete a user"""
-    user = db.get_record_by_id('users', user_id)
-    if not user:
-        flash('User not found', 'error')
-        return redirect(url_for('list_users'))
-    
     if db.delete_record('users', user_id):
         flash('User deleted successfully!', 'success')
     else:
         flash('Failed to delete user', 'error')
     
     return redirect(url_for('list_users'))
-
-# API endpoints
-@app.route('/api/users', methods=['GET'])
-def api_users():
-    """API to get all users"""
-    users = db.get_records('users')
-    return jsonify(users)
-
-@app.route('/api/users/<int:user_id>', methods=['GET'])
-def api_user(user_id):
-    """API to get a specific user"""
-    user = db.get_record_by_id('users', user_id)
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    return jsonify(user)
-
-@app.errorhandler(404)
-def page_not_found(e):
-    """Handle 404 errors"""
-    return render_template('error.html', error="Page not found"), 404
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    """Handle 500 errors"""
-    return render_template('error.html', error="Internal server error"), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 import tempfile
+import time
 from typing import List, Dict, Any, Optional, Union
 
 class DatabaseConnector:
@@ -10,75 +11,199 @@ class DatabaseConnector:
     def __init__(self, db_path: str):
         """Initialize connector with path to database"""
         self.db_path = db_path
-        self.db_binary = os.path.join(db_path, 'bin/db-project')
-        self.json_cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_cache.json')
+        self.db_binary = os.path.join(db_path, 'bin', 'db-project')
+        self.database_name = "myusers"
+        self.table_name = "users"
         
-        # Initialize cache if it doesn't exist
-        if not os.path.exists(self.json_cache_file):
-            self._initialize_cache()
+        # Create the database and table if they don't exist
+        self._setup_database()
     
-    def _initialize_cache(self) -> None:
-        """Initialize the JSON cache file with basic structure"""
-        cache_data = {
-            'databases': ['school', 'company'],
-            'tables': {
-                'users': {
-                    'database': 'company',
-                    'columns': [
-                        {'name': 'id', 'type': 'INT'},
-                        {'name': 'name', 'type': 'STRING'},
-                        {'name': 'email', 'type': 'STRING'}
-                    ]
-                },
-                'students': {
-                    'database': 'school',
-                    'columns': [
-                        {'name': 'id', 'type': 'INT'},
-                        {'name': 'name', 'type': 'STRING'},
-                        {'name': 'father_name', 'type': 'STRING'},
-                        {'name': 'gpa', 'type': 'FLOAT'},
-                        {'name': 'age', 'type': 'INT'},
-                        {'name': 'gender', 'type': 'STRING'}
-                    ]
-                }
-            },
-            'records': {
-                'users': [
-                    {'id': 1, 'name': 'John Doe', 'email': 'john@example.com'},
-                    {'id': 2, 'name': 'Jane Smith', 'email': 'jane@example.com'}
-                ],
-                'students': [
-                    {'id': 1, 'name': 'John Doe', 'father_name': 'Richard Roe', 'gpa': 3.5, 'age': 20, 'gender': 'M'},
-                    {'id': 2, 'name': 'Jane Smith', 'father_name': 'John Smith', 'gpa': 3.8, 'age': 22, 'gender': 'F'},
-                    {'id': 3, 'name': 'Alice Johnson', 'father_name': 'Robert Johnson', 'gpa': 3.2, 'age': 19, 'gender': 'F'}
-                ]
-            }
-        }
+    def _setup_database(self) -> None:
+        """Set up the database and table if they don't exist"""
+        # Create database and table in one go to ensure they exist
+        create_commands = [
+            f"CREATE DATABASE {self.database_name}",
+            f"USE DATABASE {self.database_name}",
+            f"CREATE TABLE {self.table_name} (id INT, name STRING(100), email STRING(255))"
+        ]
+        self.run_command("\n".join(create_commands))
+    
+    
+    def get_tables(self) -> List[str]:
+        """Get a list of available tables"""
+        output = self.run_command("SHOW TABLES")
+        tables = []
         
-        with open(self.json_cache_file, 'w') as f:
-            json.dump(cache_data, f, indent=4)
+        # Parse the output to extract table names
+        lines = output.strip().split('\n')
+        for line in lines:
+            if "Table:" in line:
+                table_name = line.split("Table:")[1].strip()
+                tables.append(table_name)
+        
+        if not tables:
+            # If parsing failed, at least return our known table
+            return [self.table_name]
+            
+        return tables
     
-    def _load_cache(self) -> Dict[str, Any]:
-        """Load the current cache data"""
-        with open(self.json_cache_file, 'r') as f:
-            return json.load(f)
+    def get_records(self, table_name: str) -> List[Dict[str, Any]]:
+        """Get all records from a table"""
+        output = self.run_command(f"USE TABLE {table_name}\nSELECT * FROM {table_name}")
+        records = []
+        
+        # Parse the output to extract records
+        lines = output.strip().split('\n')
+        header_found = False
+        columns = []
+        
+        for line in lines:
+            if "id" in line.lower() and "name" in line.lower() and "email" in line.lower():
+                # This is likely the header line
+                header_found = True
+                # Extract column names from header
+                columns = [col.strip() for col in line.split('|') if col.strip()]
+            elif header_found and '|' in line and not line.startswith('db >'):
+                # This is a data row
+                values = [val.strip() for val in line.split('|') if val.strip()]
+                if len(values) >= len(columns):
+                    record = {}
+                    for i, column in enumerate(columns):
+                        column_lower = column.lower()
+                        # Convert ID to integer if possible
+                        if column_lower == 'id' and values[i].isdigit():
+                            record[column_lower] = int(values[i])
+                        else:
+                            record[column_lower] = values[i]
+                    records.append(record)
+        
+        return records
     
-    def _save_cache(self, data: Dict[str, Any]) -> None:
-        """Save data to the cache file"""
-        with open(self.json_cache_file, 'w') as f:
-            json.dump(data, f, indent=4)
+    def get_record_by_id(self, table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific record by ID"""
+        output = self.run_command(f"USE TABLE {table_name}\nSELECT * FROM {table_name} WHERE id = {record_id}")
+        
+        # Parse the output to extract the record
+        lines = output.strip().split('\n')
+        header_found = False
+        columns = []
+        record = None
+        
+        for line in lines:
+            if "id" in line.lower() and "name" in line.lower() and "email" in line.lower():
+                # This is likely the header line
+                header_found = True
+                columns = [col.strip() for col in line.split('|') if col.strip()]
+            elif header_found and '|' in line and not line.startswith('db >'):
+                # This is a data row
+                values = [val.strip() for val in line.split('|') if val.strip()]
+                if len(values) >= len(columns):
+                    record = {}
+                    for i, column in enumerate(columns):
+                        column_lower = column.lower()
+                        if column_lower == 'id' and values[i].isdigit():
+                            record[column_lower] = int(values[i])
+                        else:
+                            record[column_lower] = values[i]
+                    break  # We only need the first matching record
+        
+        return record
+    
+    def insert_record(self, table_name: str, record: Dict[str, Any]) -> bool:
+        """Insert a new record into a table"""
+        try:
+            values_str = f"{record['id']}, \"{record['name']}\", \"{record['email']}\""
+            output = self.run_command(f"USE TABLE {table_name}\nINSERT INTO {table_name} VALUES ({values_str})")
+            
+            # Check if the command was successful
+            if "Executed" in output:
+                return True
+            return False
+        except Exception as e:
+            print(f"Error inserting record: {e}")
+            return False
+    
+    def update_record(self, table_name: str, record_id: int, record: Dict[str, Any]) -> bool:
+        """Update an existing record"""
+        try:
+            # Check if record exists first
+            existing_record = self.get_record_by_id(table_name, record_id)
+            if not existing_record:
+                return False
+            
+            # Execute commands to update each field
+            commands = []
+            commands.append(f"USE TABLE {table_name}")
+            
+            if 'name' in record:
+                commands.append(f"UPDATE {table_name} SET name = \"{record['name']}\" WHERE id = {record_id}")
+            
+            if 'email' in record:
+                commands.append(f"UPDATE {table_name} SET email = \"{record['email']}\" WHERE id = {record_id}")
+            
+            # Run the commands
+            output = self.run_command("\n".join(commands))
+            
+            # Check if the command was successful
+            return "Executed" in output
+        except Exception as e:
+            print(f"Error updating record: {e}")
+            return False
+    
+    def delete_record(self, table_name: str, record_id: int) -> bool:
+        """Delete a record"""
+        try:
+            output = self.run_command(f"USE TABLE {table_name}\nDELETE FROM {table_name} WHERE id = {record_id}")
+            
+            # Check if the command was successful
+            return "Executed" in output
+        except Exception as e:
+            print(f"Error deleting record: {e}")
+            return False
+    
+    def get_next_id(self, table_name: str) -> int:
+        """Get the next available ID for a table"""
+        records = self.get_records(table_name)
+        if not records:
+            return 1
+        
+        # Find the maximum ID
+        max_id = 0
+        for record in records:
+            if 'id' in record and isinstance(record['id'], int):
+                max_id = max(max_id, record['id'])
+        
+        return max_id + 1
     
     def run_command(self, command: str) -> str:
         """Run a command on the database binary and return output"""
         try:
             # Create a temporary script file with the command
-            with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
-                f.write(command + '\n.exit\n')
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+                # First make sure we're creating and using the database
+                f.write(f"CREATE DATABASE {self.database_name}\n")
+                f.write(f"USE DATABASE {self.database_name}\n")
+                
+                # Then write the actual command
+                f.write(command + "\n.exit\n")
                 temp_file = f.name
             
-            # Run the command using the database binary
+            # Since we're already in WSL, directly use the binary
+            db_binary_path = self.db_binary
+            if os.path.exists('/mnt/c'):
+                # We're in WSL, convert Windows path to WSL path
+                db_binary_path = self._convert_to_wsl_path(self.db_binary)
+            
+            print(f"Running command: {command}")
+            print(f"Using binary: {db_binary_path}")
+            
+            # Make sure the binary is executable
+            if os.path.exists(db_binary_path):
+                os.chmod(db_binary_path, 0o755)
+            
+            # Execute directly (not using wsl command)
             process = subprocess.Popen(
-                [self.db_binary],
+                [db_binary_path],
                 stdin=open(temp_file, 'r'),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -93,153 +218,19 @@ class DatabaseConnector:
             if stderr:
                 print(f"Error executing command: {stderr}")
             
+            print(f"Command output: {stdout}")
             return stdout
         except Exception as e:
             print(f"Error running command: {e}")
-            return ""
-    
-    def get_tables(self) -> List[str]:
-        """Get a list of available tables"""
-        cache_data = self._load_cache()
-        return list(cache_data['tables'].keys())
-    
-    def get_records(self, table_name: str) -> List[Dict[str, Any]]:
-        """Get all records from a table"""
-        cache_data = self._load_cache()
-        if table_name in cache_data['records']:
-            return cache_data['records'][table_name]
-        return []
-    
-    def get_record_by_id(self, table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific record by ID"""
-        records = self.get_records(table_name)
-        for record in records:
-            if int(record['id']) == record_id:
-                return record
-        return None
-    
-    def get_table_schema(self, table_name: str) -> List[Dict[str, str]]:
-        """Get schema information for a table"""
-        cache_data = self._load_cache()
-        if table_name in cache_data['tables']:
-            return cache_data['tables'][table_name]['columns']
-        return []
-    
-    def insert_record(self, table_name: str, record: Dict[str, Any]) -> bool:
-        """Insert a new record into a table"""
-        try:
-            cache_data = self._load_cache()
-            
-            # Make sure the table exists
-            if table_name not in cache_data['records']:
-                cache_data['records'][table_name] = []
-            
-            # Check for duplicate ID
-            for existing_record in cache_data['records'][table_name]:
-                if int(existing_record['id']) == int(record['id']):
-                    return False
-            
-            # Add the record
-            cache_data['records'][table_name].append(record)
-            self._save_cache(cache_data)
-            
-            # Generate the INSERT command
-            db_name = cache_data['tables'][table_name]['database']
-            values = []
-            for column in cache_data['tables'][table_name]['columns']:
-                col_name = column['name']
-                if col_name in record:
-                    if column['type'] == 'STRING':
-                        values.append(f'"{record[col_name]}"')
-                    else:
-                        values.append(str(record[col_name]))
-                else:
-                    values.append('NULL')
-            
-            values_str = ", ".join(values)
-            command = f"USE DATABASE {db_name}\n"
-            command += f"USE TABLE {table_name}\n"
-            command += f"INSERT INTO {table_name} VALUES ({values_str})"
-            
-            # Execute the command
-            self.run_command(command)
-            
-            return True
-        except Exception as e:
-            print(f"Error inserting record: {e}")
-            return False
-    
-    def update_record(self, table_name: str, record_id: int, record: Dict[str, Any]) -> bool:
-        """Update an existing record"""
-        try:
-            cache_data = self._load_cache()
-            
-            # Make sure the table exists
-            if table_name not in cache_data['records']:
-                return False
-            
-            # Find and update the record
-            for i, existing_record in enumerate(cache_data['records'][table_name]):
-                if int(existing_record['id']) == int(record_id):
-                    # Keep the same ID
-                    record['id'] = existing_record['id']
-                    cache_data['records'][table_name][i] = record
-                    self._save_cache(cache_data)
-                    
-                    # Generate the UPDATE command for each field
-                    db_name = cache_data['tables'][table_name]['database']
-                    command = f"USE DATABASE {db_name}\n"
-                    command += f"USE TABLE {table_name}\n"
-                    
-                    for key, value in record.items():
-                        if key != 'id':
-                            # Format the value based on type
-                            if isinstance(value, str):
-                                value_str = f'"{value}"'
-                            else:
-                                value_str = str(value)
-                            
-                            command += f"UPDATE {table_name} SET {key} = {value_str} WHERE id = {record_id}\n"
-                    
-                    # Execute the command
-                    self.run_command(command)
-                    
-                    return True
-            
-            return False
-        except Exception as e:
-            print(f"Error updating record: {e}")
-            return False
-    
-    def delete_record(self, table_name: str, record_id: int) -> bool:
-        """Delete a record"""
-        try:
-            cache_data = self._load_cache()
-            
-            # Make sure the table exists
-            if table_name not in cache_data['records']:
-                return False
-            
-            # Find and remove the record
-            records = cache_data['records'][table_name]
-            initial_count = len(records)
-            cache_data['records'][table_name] = [r for r in records if int(r['id']) != int(record_id)]
-            
-            if len(cache_data['records'][table_name]) < initial_count:
-                self._save_cache(cache_data)
-                
-                # Generate the DELETE command
-                db_name = cache_data['tables'][table_name]['database']
-                command = f"USE DATABASE {db_name}\n"
-                command += f"USE TABLE {table_name}\n"
-                command += f"DELETE FROM {table_name} WHERE id = {record_id}"
-                
-                # Execute the command
-                self.run_command(command)
-                
-                return True
-            
-            return False
-        except Exception as e:
-            print(f"Error deleting record: {e}")
-            return False
+            return f"Error: {str(e)}"
+
+    def _convert_to_wsl_path(self, windows_path: str) -> str:
+        """Convert a Windows path to a WSL path"""
+        # Remove drive letter and convert backslashes to forward slashes
+        path = windows_path.replace('\\', '/')
+        
+        # If it has a drive letter like C:, convert to /mnt/c
+        if ':' in path:
+            drive, rest = path.split(':', 1)
+            return f"/mnt/{drive.lower()}{rest}"
+        return path
