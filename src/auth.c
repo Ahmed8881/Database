@@ -110,9 +110,10 @@ bool auth_check_permission(UserManager* manager, const char* operation) {
         return true;
     }
     
-    // Developer has read-write access but cannot drop
+    // Developer has read-write access but cannot drop or delete
     if (role == ROLE_DEVELOPER) {
-        if (strcasecmp(operation, "DROP") == 0) {
+        if (strcasecmp(operation, "DROP") == 0 || 
+            strcasecmp(operation, "DELETE") == 0) {
             return false;
         }
         return true;
@@ -359,33 +360,121 @@ PrepareResult prepare_logout(Input_Buffer *buf, Statement *statement) {
 PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement) {
     statement->type = STATEMENT_CREATE_USER;
     
-    // Parse: CREATE USER username PASSWORD password ROLE role
+    // Copy the buffer so we can use strtok without modifying the original
+    char input_copy[1024];
+    strncpy(input_copy, buf->buffer, sizeof(input_copy) - 1);
+    input_copy[sizeof(input_copy) - 1] = '\0';
+    
     char username[64] = {0};
     char password[64] = {0};
     char role_str[20] = {0};
     
-    // Use a more flexible parsing approach
-    char *input = buf->buffer;
-    char *token = strtok(input, " \t");  // Skip "CREATE"
-    token = strtok(NULL, " \t");  // Skip "USER"
+    // Parse the command using a more flexible approach
+    char *token = strtok(input_copy, " \t");  // "CREATE"
+    token = strtok(NULL, " \t");              // "USER"
     
     // Get username
     token = strtok(NULL, " \t");
     if (!token) return PREPARE_SYNTAX_ERROR;
     strncpy(username, token, sizeof(username) - 1);
     
-    // Skip to PASSWORD keyword
+    // Try to find PASSWORD keyword or variations
     token = strtok(NULL, " \t");
-    if (!token || strcasecmp(token, "PASSWORD") != 0) {
+    if (!token) return PREPARE_SYNTAX_ERROR;
+    
+    // Handle different syntax variations
+    // 1. CREATE USER username PASSWORD password ROLE role
+    // 2. CREATE USER username WITH PASSWORD password ROLE role
+    // 3. CREATE USER username with password 'password' ROLE 'role'
+    
+    if (strcasecmp(token, "PASSWORD") == 0) {
+        // Direct PASSWORD keyword
+        token = strtok(NULL, " \t");
+        if (!token) return PREPARE_SYNTAX_ERROR;
+        
+        // Handle quoted and unquoted passwords
+        if (token[0] == '\'' || token[0] == '"') {
+            // Remove quotes
+            char quote = token[0];
+            int len = strlen(token);
+            if (len >= 2 && token[len-1] == quote) {
+                // Copy without quotes
+                strncpy(password, token+1, len-2);
+                password[len-2] = '\0';
+            } else {
+                // Find closing quote in subsequent tokens
+                strncpy(password, token+1, sizeof(password)-1);
+                
+                // Look for closing quote in next tokens
+                token = strtok(NULL, " \t");
+                while (token) {
+                    int tlen = strlen(token);
+                    if (token[tlen-1] == quote) {
+                        // Found closing quote
+                        token[tlen-1] = '\0';
+                        strncat(password, " ", sizeof(password)-strlen(password)-1);
+                        strncat(password, token, sizeof(password)-strlen(password)-1);
+                        break;
+                    } else {
+                        strncat(password, " ", sizeof(password)-strlen(password)-1);
+                        strncat(password, token, sizeof(password)-strlen(password)-1);
+                    }
+                    token = strtok(NULL, " \t");
+                }
+            }
+        } else {
+            // Unquoted password
+            strncpy(password, token, sizeof(password)-1);
+        }
+    } else if (strcasecmp(token, "WITH") == 0) {
+        // WITH PASSWORD syntax
+        token = strtok(NULL, " \t");
+        if (!token || strcasecmp(token, "PASSWORD") != 0) {
+            return PREPARE_SYNTAX_ERROR;
+        }
+        
+        token = strtok(NULL, " \t");
+        if (!token) return PREPARE_SYNTAX_ERROR;
+        
+        // Handle quoted and unquoted passwords
+        if (token[0] == '\'' || token[0] == '"') {
+            // Remove quotes
+            char quote = token[0];
+            int len = strlen(token);
+            if (len >= 2 && token[len-1] == quote) {
+                // Copy without quotes
+                strncpy(password, token+1, len-2);
+                password[len-2] = '\0';
+            } else {
+                // Find closing quote in subsequent tokens
+                strncpy(password, token+1, sizeof(password)-1);
+                
+                // Look for closing quote in next tokens
+                token = strtok(NULL, " \t");
+                while (token) {
+                    int tlen = strlen(token);
+                    if (token[tlen-1] == quote) {
+                        // Found closing quote
+                        token[tlen-1] = '\0';
+                        strncat(password, " ", sizeof(password)-strlen(password)-1);
+                        strncat(password, token, sizeof(password)-strlen(password)-1);
+                        break;
+                    } else {
+                        strncat(password, " ", sizeof(password)-strlen(password)-1);
+                        strncat(password, token, sizeof(password)-strlen(password)-1);
+                    }
+                    token = strtok(NULL, " \t");
+                }
+            }
+        } else {
+            // Unquoted password
+            strncpy(password, token, sizeof(password)-1);
+        }
+    } else {
         return PREPARE_SYNTAX_ERROR;
     }
     
-    // Get password
-    token = strtok(NULL, " \t");
-    if (!token) return PREPARE_SYNTAX_ERROR;
-    strncpy(password, token, sizeof(password) - 1);
-    
-    // Skip to ROLE keyword
+    // Find ROLE keyword
     token = strtok(NULL, " \t");
     if (!token || strcasecmp(token, "ROLE") != 0) {
         return PREPARE_SYNTAX_ERROR;
@@ -394,7 +483,24 @@ PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement) {
     // Get role
     token = strtok(NULL, " \t");
     if (!token) return PREPARE_SYNTAX_ERROR;
-    strncpy(role_str, token, sizeof(role_str) - 1);
+    
+    // Handle quoted and unquoted roles
+    if (token[0] == '\'' || token[0] == '"') {
+        // Remove quotes
+        char quote = token[0];
+        int len = strlen(token);
+        if (len >= 2 && token[len-1] == quote) {
+            // Copy without quotes
+            strncpy(role_str, token+1, len-2);
+            role_str[len-2] = '\0';
+        } else {
+            // Single quote without closing quote
+            return PREPARE_SYNTAX_ERROR;
+        }
+    } else {
+        // Unquoted role
+        strncpy(role_str, token, sizeof(role_str)-1);
+    }
     
     // Store in statement
     strncpy(statement->auth_username, username, sizeof(statement->auth_username) - 1);
@@ -404,9 +510,9 @@ PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement) {
     if (strcasecmp(role_str, "ADMIN") == 0) {
         statement->auth_role = ROLE_ADMIN;
     } else if (strcasecmp(role_str, "EDITOR") == 0 || strcasecmp(role_str, "DEVELOPER") == 0) {
-        statement->auth_role = ROLE_DEVELOPER; // Changed from ROLE_EDITOR to ROLE_DEVELOPER
+        statement->auth_role = ROLE_DEVELOPER;
     } else if (strcasecmp(role_str, "VIEWER") == 0 || strcasecmp(role_str, "USER") == 0) {
-        statement->auth_role = ROLE_USER; // Changed from ROLE_VIEWER to ROLE_USER
+        statement->auth_role = ROLE_USER;
     } else {
         printf("Invalid role. Expected: ADMIN, DEVELOPER, or USER\n");
         return PREPARE_SYNTAX_ERROR;
