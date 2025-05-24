@@ -1,6 +1,6 @@
 import re
 import json
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, Any, Optional
 
 class SQLParser:
     """
@@ -14,6 +14,11 @@ class SQLParser:
         """Parse SQL query and convert to JSON structure"""
         query = query.strip()
         
+        # First check if this is a meta command (starting with a period)
+        if query.startswith('.'):
+            return self._parse_meta_command(query)
+        
+        # Regular SQL command processing
         # Normalize spaces
         query = re.sub(r'\s+', ' ', query)
         
@@ -46,6 +51,75 @@ class SQLParser:
         else:
             raise ValueError(f"Unsupported SQL command: {query}")
     
+    def _parse_meta_command(self, query: str) -> Dict[str, Any]:
+        """
+        Parse meta commands that start with a period.
+        Examples: .exit, .btree, .constants, .format, .txn commands
+        """
+        parts = query.split()
+        command = parts[0].lower()
+        
+        if command == '.exit':
+            return {
+                "command": "exit"
+            }
+        elif command == '.btree':
+            result = {
+                "command": "btree"
+            }
+            # Check if table name is provided
+            if len(parts) > 1:
+                result["table"] = parts[1]
+            return result
+        elif command == '.constants':
+            return {
+                "command": "constants"
+            }
+        elif command == '.format':
+            result = {
+                "command": "format"
+            }
+            if len(parts) > 1:
+                result["format_type"] = parts[1]
+            return result
+        elif command == '.txn':
+            if len(parts) < 2:
+                raise ValueError("Invalid transaction command syntax")
+                
+            txn_command = parts[1].lower()
+            if txn_command == 'begin':
+                return {
+                    "command": "begin",
+                    "transaction_id": self.transaction_id
+                }
+            elif txn_command == 'commit':
+                return {
+                    "command": "commit",
+                    "transaction_id": self.transaction_id
+                }
+            elif txn_command == 'rollback':
+                return {
+                    "command": "rollback",
+                    "transaction_id": self.transaction_id
+                }
+            elif txn_command == 'status':
+                return {
+                    "command": "status",
+                    "transaction_id": self.transaction_id
+                }
+            elif txn_command == 'enable':
+                return {
+                    "command": "txn_enable"
+                }
+            elif txn_command == 'disable':
+                return {
+                    "command": "txn_disable"
+                }
+            else:
+                raise ValueError(f"Unknown transaction command: {txn_command}")
+        else:
+            raise ValueError(f"Unknown meta command: {command}")
+
     def _parse_select(self, query: str) -> Dict[str, Any]:
         """
         Parse SELECT statements.
@@ -70,7 +144,7 @@ class SQLParser:
         # Extract column list
         columns_part = query[6:query.lower().find('from')].strip()
         if columns_part == '*':
-            result["columns"] = []  # Empty list indicates all columns
+            result["columns"] = ['*']  # Fixed: Explicitly set * as a column value
         else:
             columns = [col.strip() for col in columns_part.split(',')]
             result["columns"] = columns
