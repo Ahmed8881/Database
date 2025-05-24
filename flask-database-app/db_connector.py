@@ -52,30 +52,64 @@ class DatabaseConnector:
         output = self.run_command(f"USE TABLE {table_name}\nSELECT * FROM {table_name}")
         records = []
         
-        # Parse the output to extract records
+        # Better parsing of the output
+        print(f"Raw output for records: {output}")
+        
         lines = output.strip().split('\n')
         header_found = False
         columns = []
+        in_data_section = False
         
         for line in lines:
-            if "id" in line.lower() and "name" in line.lower() and "email" in line.lower():
-                # This is likely the header line
+            # Debug
+            print(f"Processing line: '{line}'")
+            
+            # Skip empty lines and db prompt lines
+            if not line.strip() or line.strip().startswith('db >'):
+                continue
+            
+            # Look for header row with column names
+            if not header_found and ('id' in line.lower() and 'name' in line.lower()):
                 header_found = True
-                # Extract column names from header
-                columns = [col.strip() for col in line.split('|') if col.strip()]
-            elif header_found and '|' in line and not line.startswith('db >'):
-                # This is a data row
-                values = [val.strip() for val in line.split('|') if val.strip()]
-                if len(values) >= len(columns):
+                columns = []
+                # Extract column names, handle different formats
+                parts = line.split('|')
+                for part in parts:
+                    col = part.strip()
+                    if col:
+                        columns.append(col.lower())
+                print(f"Found columns: {columns}")
+                continue
+            
+            # Process data rows - must contain pipe character and not be a command response
+            if header_found and '|' in line and not any(x in line for x in ['Executed', 'Error', 'Table:']):
+                values = [val.strip() for val in line.split('|') if val]
+                
+                if len(values) >= len(columns) and len(columns) > 0:
                     record = {}
                     for i, column in enumerate(columns):
-                        column_lower = column.lower()
-                        # Convert ID to integer if possible
-                        if column_lower == 'id' and values[i].isdigit():
-                            record[column_lower] = int(values[i])
-                        else:
-                            record[column_lower] = values[i]
+                        if i < len(values):
+                            value = values[i]
+                            # Convert ID to integer if possible
+                            if column == 'id' and value.isdigit():
+                                record[column] = int(value)
+                            else:
+                                record[column] = value
+                    
+                    print(f"Found record: {record}")
                     records.append(record)
+        
+        # If all else fails, try loading the data_cache.json file
+        if not records:
+            try:
+                cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_cache.json')
+                if os.path.exists(cache_file):
+                    with open(cache_file, 'r') as f:
+                        cache_data = json.load(f)
+                        if 'records' in cache_data and table_name in cache_data['records']:
+                            return cache_data['records'][table_name]
+            except Exception as e:
+                print(f"Error reading cache file: {e}")
         
         return records
     
