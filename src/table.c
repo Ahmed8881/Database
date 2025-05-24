@@ -704,7 +704,7 @@ void* dynamic_row_get_blob(DynamicRow* row, TableDef* table_def, uint32_t col_id
 }
 
 void dynamic_row_free(DynamicRow* row) {
-    if (row->data) {
+    if (row && row->data) {
         free(row->data);
         row->data = NULL;
         row->data_size = 0;
@@ -712,11 +712,10 @@ void dynamic_row_free(DynamicRow* row) {
 }
 
 void serialize_dynamic_row(DynamicRow* source, TableDef* table_def, void* destination) {
-    #ifdef DEBUG
-    printf("DEBUG: Serializing dynamic row with %d columns, size %u\n", 
-           table_def->num_columns, source->data_size);
-    #endif
-    // Simple copy since we're already using a packed memory layout
+    // Add table_def parameter usage to avoid warning
+    if (!source || !destination || !table_def) {
+        return;
+    }
     memcpy(destination, source->data, source->data_size);
     
     // Debug: Print the first few bytes after serialization
@@ -729,60 +728,51 @@ void serialize_dynamic_row(DynamicRow* source, TableDef* table_def, void* destin
     #endif
 }
 
-void deserialize_dynamic_row(void* source, TableDef* table_def, DynamicRow* destination) {
-    // Make sure destination has a buffer allocated
-    if (destination->data == NULL) {
-        dynamic_row_init(destination, table_def);
-    }
-    
-    #ifdef DEBUG
-    printf("DEBUG: Deserializing dynamic row with %d columns, size %u\n", 
-           table_def->num_columns, destination->data_size);
-    #endif
-    
-    // Simple copy since we're using a packed memory layout
-    memcpy(destination->data, source, destination->data_size);
-    
-    // Debug: Print the first few bytes after deserialization
-    #ifdef DEBUG
-    printf("DEBUG: First 10 bytes after deserialization: ");
-    for (uint32_t i = 0; i < 10 && i < destination->data_size; i++) {
-        printf("%02x ", ((unsigned char*)destination->data)[i]);
-    }
-    printf("\n");
-    #endif
-    
-    // Debug: Check if string columns are properly terminated
-    #ifdef DEBUG
+void deserialize_dynamic_row(void *source, TableDef *table_def, DynamicRow *destination) {
+    // Calculate the size needed for the row
+    uint32_t size = 0;
     for (uint32_t i = 0; i < table_def->num_columns; i++) {
-        if (table_def->columns[i].type == COLUMN_TYPE_STRING) {
-            uint32_t offset = get_column_offset(table_def, i);
-            char* str = (char*)destination->data + offset;
-            
-            // Make sure string is null-terminated somewhere in its allocated space
-            bool found_null = false;
-            for (uint32_t j = 0; j < table_def->columns[i].size && offset + j < destination->data_size; j++) {
-                if (str[j] == '\0') {
-                    found_null = true;
-                    break;
-                }
-            }
-            
-            if (!found_null && offset < destination->data_size) {
-                // Force null termination at the end of the string's allocated space
-                uint32_t max_pos = (offset + table_def->columns[i].size - 1 < destination->data_size) ? 
-                                   table_def->columns[i].size - 1 : destination->data_size - offset - 1;
-                str[max_pos] = '\0';
-                printf("WARNING: Fixed missing null terminator in column %s during deserialization\n", 
-                       table_def->columns[i].name);
-            }
-            
-            printf("DEBUG: Column %s (idx=%d) string value after deserialize: '%s'\n", 
-                   table_def->columns[i].name, i, str);
+        ColumnDef *col = &table_def->columns[i];
+        
+        switch (col->type) {
+            case COLUMN_TYPE_INT:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_FLOAT:
+                size += sizeof(float);
+                break;
+            case COLUMN_TYPE_BOOLEAN:
+                size += sizeof(uint8_t);
+                break;
+            case COLUMN_TYPE_DATE:
+            case COLUMN_TYPE_TIME:
+                size += sizeof(int32_t);
+                break;
+            case COLUMN_TYPE_TIMESTAMP:
+                size += sizeof(int64_t);
+                break;
+            case COLUMN_TYPE_STRING:
+                size += col->size + 1;  // Include null terminator
+                break;
+            case COLUMN_TYPE_BLOB:
+                size += col->size + sizeof(uint32_t);  // Size prefix + data
+                break;
         }
     }
-    #endif
+    
+    // Allocate memory for the row
+    destination->data = malloc(size);
+    if (!destination->data) {
+        fprintf(stderr, "ERROR: Failed to allocate %u bytes for row during deserialization\n", size);
+        exit(EXIT_FAILURE);
+    }
+    
+    destination->data_size = size;
+    
+    // Copy data from source to destination
+    memcpy(destination->data, source, size);
 }
+
 
 void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
     printf("(");

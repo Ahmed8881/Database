@@ -6,8 +6,9 @@
 #include "include/pager.h"
 #include "include/database.h"
 #include "include/catalog.h"
+#include "include/auth.h"
 #include <string.h>
-// #include <strings.h>
+#include <strings.h> // Add this for strncasecmp
 
 int main(int argc, char *argv[]) {
     (void)argc; // Mark as used to avoid warning
@@ -16,8 +17,33 @@ int main(int argc, char *argv[]) {
     // Start with no active database
     Database* db = NULL;
     
+    // Flag to indicate if we've shown the welcome message
+    bool welcome_shown = false;
+    
     Input_Buffer *input_buf = newInputBuffer();
     while (1) {
+        // Show welcome message only once
+        if (!welcome_shown) {
+            printf("====================================================\n");
+            printf("    Welcome to JHAZ Database System\n");
+            printf("----------------------------------------------------\n");
+            printf("Please login with: LOGIN username password\n");
+            // printf("Default admin credentials: admin / jhaz\n");
+            printf("====================================================\n\n");
+            welcome_shown = true;
+        }
+        
+        // Display prompt with authentication status
+        if (db) {
+            if (db_is_authenticated(db)) {
+                printf("%s:%s> ", db->name, auth_get_current_username(&db->user_manager));
+            } else {
+                printf("%s> ", db->name);
+            }
+        } else {
+            printf("db > ");
+        }
+        
         read_input(input_buf);
         
         // Trim any trailing newlines or whitespace
@@ -39,6 +65,13 @@ int main(int argc, char *argv[]) {
             if (!db && strcmp(trimmed_input, ".exit") != 0) {
                 printf("Error: No database is currently open.\n");
                 printf("Create or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+                continue;
+            }
+            
+            // Check authentication for meta commands except exit
+            if (strcmp(trimmed_input, ".exit") != 0 && !db_is_authenticated(db)) {
+                printf("Error: Authentication required. Please login first.\n");
+                printf("Use 'LOGIN username 'password'' to authenticate.\n");
                 continue;
             }
             
@@ -84,9 +117,56 @@ int main(int argc, char *argv[]) {
             Statement statement;
             memset(&statement, 0, sizeof(Statement));  // Initialize all fields
             
-            // Check for database creation or use commands before requiring an active database
+            // Always allow authentication commands
+            if (strncasecmp(trimmed_input, "login", 5) == 0 ||
+                strncasecmp(trimmed_input, "logout", 6) == 0) {
+                
+                // Check if we need to create a temporary database for auth
+                if (!db) {
+                    // Create an in-memory database just for auth
+                    db = malloc(sizeof(Database));
+                    if (!db) {
+                        printf("Error: Failed to allocate memory.\n");
+                        continue;
+                    }
+                    memset(db, 0, sizeof(Database));
+                    strcpy(db->name, "temp");
+                    auth_init(&db->user_manager);
+                }
+                
+                switch (prepare_statement(input_buf, &statement)) {
+                    case PREPARE_SUCCESS:
+                        statement.db = db;
+                        break;
+                    default:
+                        printf("Syntax error. Could not parse statement.\n");
+                        continue;
+                }
+                
+                switch (execute_statement(&statement, db)) {
+                    case EXECUTE_SUCCESS:
+                        // Success handled by the execute function
+                        break;
+                    case EXECUTE_AUTH_FAILED:
+                        // Auth failure handled by the execute function
+                        break;
+                    default:
+                        printf("Error during authentication.\n");
+                        break;
+                }
+                continue;
+            }
+            
+            // Check for database creation or use commands before requiring authentication
             if (strncasecmp(trimmed_input, "create database", 15) == 0 ||
                 strncasecmp(trimmed_input, "use database", 12) == 0) {
+                
+                // Always require authentication for database operations
+                if (!db || !db_is_authenticated(db)) {
+                    printf("Error: Authentication required. Please login first.\n");
+                    printf("Use 'LOGIN username password' to authenticate.\n");
+                    continue;
+                }
                 
                 switch (prepare_database_statement(input_buf, &statement)) {
                     case PREPARE_SUCCESS:
@@ -112,10 +192,51 @@ int main(int argc, char *argv[]) {
                 }
             }
             
+            // For user creation commands
+            if (strncasecmp(trimmed_input, "create user", 11) == 0) {
+                if (!db) {
+                    printf("Error: No database is currently open.\n");
+                    printf("Create or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+                    continue;
+                }
+                
+                if (!db_is_authenticated(db)) {
+                    printf("Error: Authentication required. Please login first.\n");
+                    printf("Use 'LOGIN username 'password'' to authenticate.\n");
+                    continue;
+                }
+                
+                switch (prepare_statement(input_buf, &statement)) {
+                    case PREPARE_SUCCESS:
+                        statement.db = db;
+                        break;
+                    default:
+                        printf("Syntax error. Could not parse statement.\n");
+                        continue;
+                }
+                
+                ExecuteResult result = execute_statement(&statement, db);
+                if (result == EXECUTE_SUCCESS) {
+                    printf("User '%s' created successfully.\n", statement.auth_username);
+                } else if (result == EXECUTE_PERMISSION_DENIED) {
+                    // Already handled in execute_statement
+                } else {
+                    printf("Error creating user.\n");
+                }
+                continue;
+            }
+            
             // For all other commands, require an active database
             if (!db) {
                 printf("Error: No database is currently open.\n");
                 printf("Create or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+                continue;
+            }
+            
+            // Require authentication for all other operations
+            if (!db_is_authenticated(db)) {
+                printf("Error: Authentication required. Please login first.\n");
+                printf("Use 'LOGIN username 'password'' to authenticate.\n");
                 continue;
             }
             
@@ -145,10 +266,13 @@ int main(int argc, char *argv[]) {
                     printf("Executed.\n");
                     break;
                 case EXECUTE_DUPLICATE_KEY:
-                    printf("Error: Duplicate key.\n");
+                    // Already handled in execute_insert
                     break;
                 case EXECUTE_TABLE_FULL:
                     printf("Error: Table full.\n");
+                    break;
+                case EXECUTE_PERMISSION_DENIED:
+                    // Already handled in execute_statement
                     break;
                 case EXECUTE_UNRECOGNIZED_STATEMENT:
                     printf("Unrecognized statement at '%s'.\n", trimmed_input);

@@ -3,6 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifdef _WIN32
+// Windows specific
+#include <string.h>
+#define strcasecmp _stricmp
+#else
+// Unix/Linux specific
+#include <strings.h>  // For strcasecmp
+#endif
 
 // Helper function to escape JSON strings
 char* json_escape_string(const char* str) {

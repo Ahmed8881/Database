@@ -6,6 +6,7 @@
 #include "pager.h"
 #include "schema.h"
 #include "transaction.h"
+#include "auth.h"  // Add this include
 
 #define MAX_OPEN_INDEXES 16
 
@@ -31,7 +32,8 @@ typedef struct
     OutputFormat output_format;     // Output format setting
     char active_table_name[MAX_TABLE_NAME];
     char table_directory[512];
-    OpenIndexes active_indexes; // Add this field
+    OpenIndexes active_indexes;     // Add this field
+    UserManager user_manager;       // Add user management
 } Database;
 
 // Create a database directory structure
@@ -69,5 +71,12 @@ void db_disable_transactions(Database *db);
 
 // Close the database
 void db_close_database(Database *db);
+
+// Add new function prototypes for authentication
+bool db_login(Database *db, const char *username, const char *password);
+void db_logout(Database *db);
+bool db_create_user(Database *db, const char *username, const char *password, UserRole role);
+bool db_is_authenticated(Database *db);
+bool db_check_permission(Database *db, const char *operation);
 
 #endif

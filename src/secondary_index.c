@@ -55,10 +55,15 @@ bool catalog_add_index(Catalog *catalog, const char *table_name,
     index->type = INDEX_TYPE_BTREE; // Use the enum value
     index->is_unique = is_unique;
 
-    // Create the index filename
-    snprintf(index->filename, sizeof(index->filename),
+    // Create the index filename using a temporary buffer
+    char filename_buffer[512];
+    snprintf(filename_buffer, sizeof(filename_buffer),
              "Database/%s/Tables/%s_%s.idx",
              catalog->database_name, table_name, index_name);
+             
+    // Copy to index->filename
+    strncpy(index->filename, filename_buffer, sizeof(index->filename) - 1);
+    index->filename[sizeof(index->filename) - 1] = '\0';
 
     // Increment the count
     table->num_indexes++;
