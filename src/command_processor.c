@@ -2463,7 +2463,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
           default:
             row_matches = false;
             break;
-        }
+        }     
 
         if (row_matches)
         {
