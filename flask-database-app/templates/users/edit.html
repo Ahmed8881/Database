@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit User - Database Organization{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('list_users') }}">Users</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('view_user', user_id=user.id) }}">{{ user.name }}</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+    </ol>
+</nav>
+
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title m-0">Edit User</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}">
+            <div class="mb-3">
+                <label for="id" class="form-label">ID</label>
+                <input type="number" class="form-control" id="id" value="{{ user.id }}" disabled>
+                <div class="form-text">ID cannot be changed.</div>
+            </div>
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" 
+                       value="{{ user.name }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" 
+                       value="{{ user.email }}" required>
+            </div>
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('view_user', user_id=user.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Cancel
+                </a>
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-save"></i> Update User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+<!-- filepath: templates/index.html -->
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Database Organization{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>Dashboard</h1>
+        <p class="lead">Welcome to the Database Organization web interface</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title m-0">Database Tables</h5>
+            </div>
+            <div class="card-body">
+                {% if tables %}
+                    <div class="list-group">
+                        {% for table in tables %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">{{ table }}</h5>
+                                <span class="badge bg-primary rounded-pill">{{ table_stats[table] }} records</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No tables found</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title m-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('list_users') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-users"></i> Manage Users
+                    </a>
+                    <a href="{{ url_for('create_user') }}" class="btn btn-outline-success">
+                        <i class="fas fa-user-plus"></i> Create New User
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title m-0">System Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <th>Total Tables</th>
+                            <td>{{ tables|length }}</td>
+                        </tr>
+                        <tr>
+                            <th>Total Records</th>
+                            <td>{{ table_stats.values()|sum }}</td>
+                        </tr>
+                        <tr>
+                            <th>Flask Version</th>
+                            <td>{{ config.ENV }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
