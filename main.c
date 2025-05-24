@@ -202,7 +202,14 @@ int main(int argc, char *argv[]) {
                 
                 if (!db_is_authenticated(db)) {
                     printf("Error: Authentication required. Please login first.\n");
-                    printf("Use 'LOGIN username 'password'' to authenticate.\n");
+                    printf("Use 'LOGIN username password' to authenticate.\n");
+                    continue;
+                }
+                
+                // Check user creation permission first
+                if (!db_check_permission(db, "CREATE_USER")) {
+                    printf("Error: Permission denied. Only administrators can create users.\n");
+                    printf("You don't have sufficient privileges. Please ask an admin for assistance.\n");
                     continue;
                 }
                 
@@ -212,6 +219,8 @@ int main(int argc, char *argv[]) {
                         break;
                     default:
                         printf("Syntax error. Could not parse statement.\n");
+                        printf("Correct syntax: CREATE USER username PASSWORD password ROLE role\n");
+                        printf("Roles: ADMIN, DEVELOPER, USER\n");
                         continue;
                 }
                 
@@ -236,7 +245,7 @@ int main(int argc, char *argv[]) {
             // Require authentication for all other operations
             if (!db_is_authenticated(db)) {
                 printf("Error: Authentication required. Please login first.\n");
-                printf("Use 'LOGIN username 'password'' to authenticate.\n");
+                printf("Use 'LOGIN username password' to authenticate.\n");
                 continue;
             }
             
