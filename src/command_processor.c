@@ -1756,13 +1756,6 @@ ExecuteResult execute_statement(Statement *statement, Database *db)
   const char* operation = NULL;
   
   switch (statement->type) {
-    case STATEMENT_LOGIN:
-    case STATEMENT_LOGOUT:
-    case STATEMENT_CREATE_USER:
-      // Authentication operations don't require regular permissions
-      requires_permission = false;
-      break;
-      
     case STATEMENT_INSERT:
       operation = "INSERT";
       break;

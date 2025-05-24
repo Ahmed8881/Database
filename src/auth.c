@@ -110,10 +110,11 @@ bool auth_check_permission(UserManager* manager, const char* operation) {
         return true;
     }
     
-    // Developer has read-write access but cannot drop or delete
+    // Developer has read-write access but cannot drop, delete, or create users
     if (role == ROLE_DEVELOPER) {
         if (strcasecmp(operation, "DROP") == 0 || 
-            strcasecmp(operation, "DELETE") == 0) {
+            strcasecmp(operation, "DELETE") == 0 ||
+            strcasecmp(operation, "CREATE_USER") == 0) {
             return false;
         }
         return true;
@@ -277,6 +278,26 @@ void auth_free_active_users(char** active_users, uint32_t count) {
     }
 }
 
+// Add function to transfer authentication state between databases
+bool auth_transfer_state(UserManager* source, UserManager* target) {
+    if (!auth_is_logged_in(source)) {
+        return false; // No user logged in to transfer
+    }
+    
+    const char* username = auth_get_current_username(source);
+    
+    // Find matching user in target database
+    for (uint32_t i = 0; i < target->count; i++) {
+        if (strcmp(target->users[i].username, username) == 0) {
+            target->current_user_index = i;
+            return true;
+        }
+    }
+    
+    // User doesn't exist in target database
+    return false;
+}
+
 #include "../include/command_processor.h"
 #include "../include/database.h"
 #include <string.h>
@@ -326,19 +347,22 @@ PrepareResult prepare_login(Input_Buffer *buf, Statement *statement) {
     }
     strncpy(username, token, sizeof(username) - 1);
     
-    // Get password
+    // Get password - handle both quoted and unquoted formats
     token = strtok(NULL, " \t");
     if (!token) {
         printf("Syntax error. Expected: LOGIN <username> <password>\n");
         return PREPARE_SYNTAX_ERROR;
     }
-    strncpy(password, token, sizeof(password) - 1);
     
-    // Check for extra tokens (should be none)
-    token = strtok(NULL, " \t");
-    if (token) {
-        printf("Syntax error. Expected: LOGIN <username> <password>\n");
-        return PREPARE_SYNTAX_ERROR;
+    // Check if password is quoted
+    if ((token[0] == '\'' && token[strlen(token)-1] == '\'') ||
+        (token[0] == '"' && token[strlen(token)-1] == '"')) {
+        // Remove quotes
+        token[strlen(token)-1] = '\0';
+        strncpy(password, token+1, sizeof(password) - 1);
+    } else {
+        // Unquoted password
+        strncpy(password, token, sizeof(password) - 1);
     }
     
     // Store credentials in the statement
@@ -385,7 +409,6 @@ PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement) {
     // Handle different syntax variations
     // 1. CREATE USER username PASSWORD password ROLE role
     // 2. CREATE USER username WITH PASSWORD password ROLE role
-    // 3. CREATE USER username with password 'password' ROLE 'role'
     
     if (strcasecmp(token, "PASSWORD") == 0) {
         // Direct PASSWORD keyword
@@ -549,13 +572,15 @@ ExecuteResult execute_logout(Statement *statement, Database *db) {
 
 ExecuteResult execute_create_user(Statement *statement, Database *db) {
     // Check if the current user has permission to create users
-    if (db_is_authenticated(db) && auth_get_current_role(&db->user_manager) != ROLE_ADMIN) {
-        printf("Error: Only administrators can create new users.\n");
+    if (!db_check_permission(db, "CREATE_USER")) {
+        printf("Error: Permission denied. Only administrators can create users.\n");
+        printf("You don't have sufficient privileges. Please ask an admin for assistance.\n");
         return EXECUTE_PERMISSION_DENIED;
     }
     
     // Create the new user
-    bool success = db_create_user(db, statement->auth_username, 
+    bool success = db_create_user(db, 
+                                 statement->auth_username, 
                                  statement->auth_password, 
                                  statement->auth_role);
     
@@ -571,23 +596,3 @@ ExecuteResult execute_create_user(Statement *statement, Database *db) {
     }
 }
 
-// New function to transfer auth state between databases
-bool auth_transfer_state(UserManager* source, UserManager* target) {
-    if (!auth_is_logged_in(source)) {
-        return false; // No user logged in to transfer
-    }
-    
-    const char* username = auth_get_current_username(source);
-    
-    // Find matching user in target database
-    for (uint32_t i = 0; i < target->count; i++) {
-        if (strcmp(target->users[i].username, username) == 0) {
-            target->current_user_index = i;
-            return true;
-        }
-    }
-    
-    // User doesn't exist in target database
-    // Could potentially create the user here, but for now just return false
-    return false;
-}
