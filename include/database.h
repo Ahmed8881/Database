@@ -7,11 +7,19 @@
 #include "schema.h"
 #include "transaction.h"
 
+#define MAX_OPEN_INDEXES 16
+
 typedef enum
 {
     OUTPUT_FORMAT_TABLE,
     OUTPUT_FORMAT_JSON
 } OutputFormat;
+
+typedef struct
+{
+    Table *tables[MAX_OPEN_INDEXES];
+    uint32_t count;
+} OpenIndexes;
 
 typedef struct
 {
@@ -23,6 +31,7 @@ typedef struct
     OutputFormat output_format;     // Output format setting
     char active_table_name[MAX_TABLE_NAME];
     char table_directory[512];
+    OpenIndexes active_indexes; // Add this field
 } Database;
 
 // Create a database directory structure

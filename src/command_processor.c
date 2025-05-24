@@ -1497,8 +1497,8 @@ ExecuteResult execute_use_table(Statement *statement, Database *db)
   printf("Debug: Building table path\n");
   // Open the table file
   char table_path[512];
-  snprintf(table_path, sizeof(table_path), "%s/%s.tbl",
-           db->table_directory, statement->table_name);
+  snprintf(table_path, sizeof(table_path), "Database/%s/Tables/%s.tbl",
+           db->name, statement->table_name);
 
   printf("Debug: Opening table at %s\n", table_path);
   db->active_table = db_open(table_path);
@@ -1506,6 +1506,33 @@ ExecuteResult execute_use_table(Statement *statement, Database *db)
   {
     printf("Error: Failed to open table '%s'.\n", statement->table_name);
     return EXECUTE_TABLE_OPEN_ERROR;
+  }
+
+  // Set the root page number from catalog
+  db->active_table->root_page_num = db->catalog.tables[table_idx].root_page_num;
+
+  // ADD THIS: Open all indexes associated with this table
+  TableDef *table_def = &db->catalog.tables[table_idx];
+  for (uint32_t i = 0; i < table_def->num_indexes; i++)
+  {
+    IndexDef *index_def = &table_def->indexes[i];
+    printf("Debug: Opening index '%s' at %s\n", index_def->name, index_def->filename);
+
+    // Open the index file
+    Table *index_table = db_open(index_def->filename);
+    if (!index_table)
+    {
+      printf("Warning: Failed to open index '%s' on table '%s'\n",
+             index_def->name, table_def->name);
+      continue;
+    }
+
+    // Set the root page number from catalog
+    index_table->root_page_num = index_def->root_page_num;
+
+    // We should store this open index table somewhere
+    // For now, we'll just close it since we'll reopen when needed
+    db_close(index_table);
   }
 
   printf("Debug: Saving table name\n");
@@ -1710,180 +1737,6 @@ ExecuteResult execute_database_statement(Statement *statement,
   }
 }
 
-// ExecuteResult execute_filtered_select(Statement *statement, Table *table)
-// {
-//   TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
-//   if (!table_def)
-//   {
-//     return EXECUTE_UNRECOGNIZED_STATEMENT;
-//   }
-
-//   // Find column index for the where condition
-//   int where_column_idx = -1;
-//   for (uint32_t i = 0; i < table_def->num_columns; i++)
-//   {
-//     if (strcasecmp(table_def->columns[i].name, statement->where_column) == 0)
-//     {
-//       where_column_idx = i;
-//       break;
-//     }
-//   }
-
-//   if (where_column_idx == -1)
-//   {
-//     printf("Error: Column '%s' not found in table\n", statement->where_column);
-//     // Free allocated memory before returning
-//     free_columns_to_select(statement);
-//     return EXECUTE_UNRECOGNIZED_STATEMENT;
-//   }
-
-//   int row_count = 0;
-
-//   // Special case: if filtering by ID, use the more efficient btree search
-//   if (strcasecmp(statement->where_column, "id") == 0 || where_column_idx == 0)
-//   {
-//     int id_value = atoi(statement->where_value);
-//     Cursor *cursor = table_find(table, id_value);
-
-//     if (!cursor->end_of_table)
-//     {
-//       DynamicRow row;
-//       dynamic_row_init(&row, table_def);
-
-//       deserialize_dynamic_row(cursor_value(cursor), table_def, &row);
-
-//       // Choose output format
-//       if (statement->db->output_format == OUTPUT_FORMAT_JSON)
-//       {
-//         start_json_result();
-//         printf("    ");
-//         format_row_as_json(&row, table_def, NULL, 0); // Show all columns
-//         end_json_result(1);
-//       }
-//       else
-//       {
-//         // Original table format code
-//         // ... existing code for table output ...
-//       }
-
-//       row_count = 1;
-//       dynamic_row_free(&row);
-//     }
-//     else
-//     {
-//       // No results found
-//       if (statement->db->output_format == OUTPUT_FORMAT_JSON)
-//       {
-//         start_json_result();
-//         end_json_result(0);
-//       }
-//       else
-//       {
-//         printf("Record not found.\n");
-//       }
-//     }
-
-//     free(cursor);
-//   }
-//   else
-//   {
-//     // For non-ID columns, we need to do a full table scan
-//     bool rows_found = false;
-//     Cursor *cursor = table_start(table);
-//     DynamicRow row;
-//     dynamic_row_init(&row, table_def);
-
-//     if (statement->db->output_format == OUTPUT_FORMAT_JSON)
-//     {
-//       start_json_result();
-//       bool first_match = true;
-
-//       while (!(cursor->end_of_table))
-//       {
-//         void *value = cursor_value(cursor);
-//         deserialize_dynamic_row(value, table_def, &row);
-
-//         // Check if this row matches our condition
-//         bool row_matches = false;
-
-//         switch (table_def->columns[where_column_idx].type)
-//         {
-//         case COLUMN_TYPE_INT:
-//         {
-//           int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
-//           int where_value = atoi(statement->where_value);
-//           row_matches = (col_value == where_value);
-//           break;
-//         }
-//         case COLUMN_TYPE_STRING:
-//         {
-//           char *col_value =
-//               dynamic_row_get_string(&row, table_def, where_column_idx);
-//           row_matches = (strcasecmp(col_value, statement->where_value) == 0);
-//           break;
-//         }
-//         case COLUMN_TYPE_FLOAT:
-//         {
-//           float col_value = dynamic_row_get_float(&row, table_def, where_column_idx);
-//           float where_value = atof(statement->where_value);
-//           row_matches = (fabs(col_value - where_value) <
-//                          0.0001); // Approximate floating point comparison
-//           break;
-//         }
-//         case COLUMN_TYPE_BOOLEAN:
-//         {
-//           bool col_value =
-//               dynamic_row_get_boolean(&row, table_def, where_column_idx);
-//           bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
-//                               strcmp(statement->where_value, "1") == 0);
-//           row_matches = (col_value == where_value);
-//           break;
-//         }
-//         // Add cases for other column types as needed
-//         default:
-//           row_matches = false;
-//           break;
-//         }
-
-//         if (row_matches)
-//         {
-//           rows_found = true;
-//           row_count++;
-
-//           if (!first_match)
-//           {
-//             printf(",\n    ");
-//           }
-//           else
-//           {
-//             printf("    ");
-//             first_match = false;
-//           }
-
-//           format_row_as_json(&row, table_def, statement->columns_to_select,
-//                              statement->num_columns_to_select);
-//         }
-
-//         cursor_advance(cursor);
-//       }
-
-//       end_json_result(row_count);
-//     }
-//     else
-//     {
-//       // Original table format code
-//       // ... existing code for table output ...
-//     }
-
-//     dynamic_row_free(&row);
-//     free(cursor);
-//   }
-
-//   // Free allocated memory for columns
-//   free_columns_to_select(statement);
-//   return EXECUTE_SUCCESS;
-// }
-
 /**
  * Creates a secondary index for the specified table and column.
  *
@@ -2080,10 +1933,17 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
   }
 
   int row_count = 0;
+  bool show_query_plan = true; // Set to true to enable query plan logging
 
   // Special case: if filtering by ID, use the more efficient btree search
   if (strcasecmp(statement->where_column, "id") == 0 || where_column_idx == 0)
   {
+    // Log query execution plan
+    if (show_query_plan)
+    {
+      printf("QUERY PLAN: Using primary key B-tree index on column 'id'\n");
+    }
+
     int id_value = atoi(statement->where_value);
     Cursor *cursor = table_find(table, id_value);
 
@@ -2104,11 +1964,81 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
       }
       else
       {
-        // Original table format code
-        // ... existing code for table output ...
+        // Table format (existing implementation)
+        // Print column names as header
+        printf("| ");
+        if (statement->num_columns_to_select > 0)
+        {
+          // Print only selected columns
+          for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
+          {
+            printf("%s | ", statement->columns_to_select[i]);
+          }
+        }
+        else
+        {
+          // Print all column names
+          for (uint32_t i = 0; i < table_def->num_columns; i++)
+          {
+            printf("%s | ", table_def->columns[i].name);
+          }
+        }
+        printf("\n");
+
+        // Print separator line
+        for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                                      ? statement->num_columns_to_select
+                                      : table_def->num_columns);
+             i++)
+        {
+          printf("|-%s-", "----------");
+        }
+        printf("|\n");
+
+        // Print row data
+        printf("| ");
+
+        if (statement->num_columns_to_select > 0)
+        {
+          // Print only selected columns
+          for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
+          {
+            // Find column index by name
+            int column_idx = -1;
+            for (uint32_t j = 0; j < table_def->num_columns; j++)
+            {
+              if (strcasecmp(table_def->columns[j].name,
+                             statement->columns_to_select[i]) == 0)
+              {
+                column_idx = j;
+                break;
+              }
+            }
+
+            if (column_idx != -1)
+            {
+              print_dynamic_column(&row, table_def, column_idx);
+            }
+            else
+            {
+              printf("N/A");
+            }
+            printf(" | ");
+          }
+        }
+        else
+        {
+          // Print all columns
+          for (uint32_t i = 0; i < table_def->num_columns; i++)
+          {
+            print_dynamic_column(&row, table_def, i);
+            printf(" | ");
+          }
+        }
+        printf("\n");
       }
 
-      row_count = 1;
+      row_count++;
       dynamic_row_free(&row);
     }
     else
@@ -2139,6 +2069,13 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
       // Use the index to find matching rows
       TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
       IndexDef *index_def = &table_def->indexes[index_idx];
+
+      // Log query execution plan
+      if (show_query_plan)
+      {
+        printf("QUERY PLAN: Using secondary index '%s' on column '%s'\n",
+               index_def->name, statement->where_column);
+      }
 
       // Open the index file
       Table *index_table = db_open(index_def->filename);
@@ -2269,7 +2206,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
             printf("| ");
             if (statement->num_columns_to_select > 0)
             {
-              // Print selected columns
+              // Print only selected columns
               for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
               {
                 printf("%s | ", statement->columns_to_select[i]);
@@ -2277,7 +2214,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
             }
             else
             {
-              // Print all columns
+              // Print all column names
               for (uint32_t i = 0; i < table_def->num_columns; i++)
               {
                 printf("%s | ", table_def->columns[i].name);
@@ -2333,15 +2270,14 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
                   printf("| ");
                   if (statement->num_columns_to_select > 0)
                   {
-                    // Print selected columns
+                    // Print only selected columns
                     for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
                     {
                       // Find column index by name
                       int column_idx = -1;
                       for (uint32_t j = 0; j < table_def->num_columns; j++)
                       {
-                        if (strcasecmp(table_def->columns[j].name,
-                                       statement->columns_to_select[i]) == 0)
+                        if (strcasecmp(table_def->columns[j].name, statement->columns_to_select[i]) == 0)
                         {
                           column_idx = j;
                           break;
