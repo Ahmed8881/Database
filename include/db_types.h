@@ -1,8 +1,9 @@
 #ifndef DB_TYPES_H
 #define DB_TYPES_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 // Common constants
 #define MAX_TABLE_NAME 64
@@ -21,22 +22,27 @@ typedef struct Cursor Cursor;
 typedef struct TableDef TableDef;
 typedef struct DynamicRow DynamicRow;
 
+// JSON Response types
+typedef struct {
+  char *data;    // JSON String
+  size_t length; // Length of the JSON string
+  bool success;  // Indicates if the operation was successful
+} JsonResponse;
+
 // Define IndexType enum
-typedef enum
-{
-    INDEX_TYPE_BTREE = 0,
-    // Future index types could be added here
+typedef enum {
+  INDEX_TYPE_BTREE = 0,
+  // Future index types could be added here
 } IndexType;
 
 // Full definition of IndexDef (not just forward declaration)
-typedef struct IndexDef
-{
-    char name[MAX_INDEX_NAME];
-    char column_name[MAX_COLUMN_NAME];
-    IndexType type;
-    uint32_t root_page_num;
-    char filename[256];
-    bool is_unique;
+typedef struct IndexDef {
+  char name[MAX_INDEX_NAME];
+  char column_name[MAX_COLUMN_NAME];
+  IndexType type;
+  uint32_t root_page_num;
+  char filename[256];
+  bool is_unique;
 } IndexDef;
 
 #endif // DB_TYPES_H

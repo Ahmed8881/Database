@@ -4,7 +4,11 @@
 
 Input_Buffer *newInputBuffer() {
   Input_Buffer *buf = (Input_Buffer *)malloc(sizeof(Input_Buffer));
-  buf->buffer = NULL;
+  buf->buffer = (char *)malloc(INPUT_BUFFER_SIZE);
+  if (buf->buffer == NULL) {
+    perror("Unable to allocate input buffer");
+    exit(EXIT_FAILURE);
+  }
   buf->buffer_length = buf->input_length = 0;
   return buf;
 }
@@ -34,8 +38,6 @@ void read_input(Input_Buffer *buf) {
     }
     buf->buffer_length = buffer_size;
   }
-
-  print_prompt();
 
   size_t position = 0;
   int c;

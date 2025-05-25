@@ -3,11 +3,14 @@
 #include "../include/btree.h"
 #include "../include/cursor.h"
 #include "../include/utils.h"
+#include "../include/json_formatter.h" // Add this include for JSON formatting functions
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <strings.h>
+#include <strings.h> // For strcasecmp on Linux
+#include <stdarg.h>
+#include <stdio.h>
 
 void print_constants()
 {
@@ -324,6 +327,155 @@ PrepareResult prepare_insert(Input_Buffer *buf, Statement *statement)
   }
   else
   {
+    // Check for alternate syntax: INSERT INTO table_name (val1, val2, ...)
+    // without the VALUES keyword
+    if (into_keyword) {
+      char table_name[MAX_TABLE_NAME];
+
+      // Extract table name after "into"
+      int table_name_start = (into_keyword - sql) + 4; // Skip "into"
+      while (sql[table_name_start] == ' ')
+        table_name_start++; // Skip spaces
+
+      // Find opening parenthesis
+      char *open_paren = strchr(into_keyword, '(');
+      if (!open_paren) {
+        return PREPARE_SYNTAX_ERROR;
+      }
+
+      // Extract table name between "into" and "("
+      int table_name_end = (open_paren - sql);
+      while (sql[table_name_end - 1] == ' ')
+        table_name_end--; // Trim trailing spaces
+
+      int table_name_len = table_name_end - table_name_start;
+      if (table_name_len <= 0 || table_name_len >= MAX_TABLE_NAME)
+      {
+        return PREPARE_SYNTAX_ERROR;
+      }
+
+      strncpy(table_name, sql + table_name_start, table_name_len);
+      table_name[table_name_len] = '\0';
+
+      // Store table name in statement
+      strncpy(statement->table_name, table_name, MAX_TABLE_NAME - 1);
+      statement->table_name[MAX_TABLE_NAME - 1] = '\0';
+
+      // Find closing parenthesis
+      char *close_paren = strrchr(open_paren, ')');
+      if (!close_paren)
+      {
+        return PREPARE_SYNTAX_ERROR;
+      }
+
+      // This is where we'll store our values
+      statement->num_values = 0;
+      statement->values = NULL;
+
+      // Extract all values between parentheses
+      char *value_str = open_paren + 1;
+      while (value_str < close_paren && statement->num_values < MAX_COLUMNS)
+      {
+        while (*value_str == ' ' || *value_str == '\t')
+          value_str++; // Skip spaces
+
+        if (value_str >= close_paren)
+          break;
+
+        // Allocate space for the new value
+        statement->values = realloc(statement->values,
+                                   (statement->num_values + 1) * sizeof(char *));
+        if (!statement->values)
+        {
+          return PREPARE_SYNTAX_ERROR;
+        }
+
+        // Handle quoted strings
+        if (*value_str == '"' || *value_str == '\'')
+        {
+          char quote_char = *value_str;
+          value_str++; // Skip opening quote
+
+          // Find closing quote
+          char *end_quote = strchr(value_str, quote_char);
+          if (!end_quote || end_quote >= close_paren)
+          {
+            return PREPARE_SYNTAX_ERROR;
+          }
+
+          int value_len = end_quote - value_str;
+          char *value = malloc(value_len + 1);
+          if (!value)
+            return PREPARE_SYNTAX_ERROR;
+
+          strncpy(value, value_str, value_len);
+          value[value_len] = '\0';
+
+          statement->values[statement->num_values++] = value;
+          value_str = end_quote + 1;
+        }
+        else
+        {
+          // Handle non-quoted values (numbers, etc.)
+          char *comma = strchr(value_str, ',');
+          if (!comma || comma > close_paren)
+            comma = close_paren;
+
+          int value_len = comma - value_str;
+          while (value_len > 0 && (value_str[value_len - 1] == ' ' ||
+                                  value_str[value_len - 1] == '\t'))
+            value_len--; // Trim trailing spaces
+
+          char *value = malloc(value_len + 1);
+          if (!value)
+            return PREPARE_SYNTAX_ERROR;
+
+          strncpy(value, value_str, value_len);
+          value[value_len] = '\0';
+
+          statement->values[statement->num_values++] = value;
+          value_str = comma;
+        }
+
+        // Skip comma if present
+        if (*value_str == ',')
+          value_str++;
+      }
+
+      // For backward compatibility, still populate the old row_to_insert
+      // structure
+      if (statement->num_values >= 1)
+      {
+        statement->row_to_insert.id = atoi(statement->values[0]);
+        // Check for negative ID - must check after conversion to int
+        if (atoi(statement->values[0]) < 0)
+        {
+          for (uint32_t i = 0; i < statement->num_values; i++)
+          {
+            free(statement->values[i]);
+          }
+          free(statement->values);
+          return PREPARE_NEGATIVE_ID;
+        }
+      }
+
+      if (statement->num_values >= 2)
+      {
+        strncpy(statement->row_to_insert.username, statement->values[1],
+                COLUMN_USERNAME_SIZE);
+        statement->row_to_insert.username[COLUMN_USERNAME_SIZE] = '\0';
+      }
+
+      if (statement->num_values >= 3)
+      {
+        strncpy(statement->row_to_insert.email, statement->values[2],
+                COLUMN_EMAIL_SIZE);
+        statement->row_to_insert.email[COLUMN_EMAIL_SIZE] = '\0';
+      }
+
+      return PREPARE_SUCCESS;
+    }
+
     // Old syntax: insert 1 username email
     // Use the existing implementation
     char *id_string = strtok(buf->buffer, " "); // Will get "insert"
@@ -369,7 +521,19 @@ PrepareResult prepare_statement(Input_Buffer *buf, Statement *statement)
   statement->columns_to_select = NULL;
   statement->num_columns_to_select = 0;
   statement->has_where_clause = false;
+  
+  // Process authentication commands regardless of database state
+  if (strncasecmp(buf->buffer, "login", 5) == 0) {
+    return prepare_login(buf, statement);
+  }
+  else if (strncasecmp(buf->buffer, "logout", 6) == 0) {
+    return prepare_logout(buf, statement);
+  }
+  else if (strncasecmp(buf->buffer, "create user", 11) == 0) {
+    return prepare_create_user(buf, statement);
+  }
 
+  // Rest of command processing
   if (strncasecmp(buf->buffer, "insert", 6) == 0)
   {
     return prepare_insert(buf, statement);
@@ -1546,6 +1710,18 @@ ExecuteResult execute_use_table(Statement *statement, Database *db)
 // Add the execute statement implementation
 ExecuteResult execute_statement(Statement *statement, Database *db)
 {
+  // Handle authentication commands regardless of active table
+  switch (statement->type) {
+    case STATEMENT_LOGIN:
+      return execute_login(statement, db);
+      
+    case STATEMENT_LOGOUT:
+      return execute_logout(statement, db);
+      
+    case STATEMENT_CREATE_USER:
+      return execute_create_user(statement, db);
+  }
+
   // Check if we need to switch tables first, but skip this for CREATE TABLE
   if (statement->table_name[0] != '\0' &&
       statement->type != STATEMENT_CREATE_TABLE)
@@ -1577,6 +1753,54 @@ ExecuteResult execute_statement(Statement *statement, Database *db)
   }
 
   // Now execute the statement with the correct table active
+  // First check permissions for operations
+  bool requires_permission = true;
+  const char* operation = NULL;
+  
+  switch (statement->type) {
+    case STATEMENT_INSERT:
+      operation = "INSERT";
+      break;
+      
+    case STATEMENT_SELECT:
+    case STATEMENT_SELECT_BY_ID:
+      operation = "SELECT";
+      break;
+      
+    case STATEMENT_UPDATE:
+      operation = "UPDATE";
+      break;
+      
+    case STATEMENT_DELETE:
+      operation = "DELETE";
+      break;
+      
+    case STATEMENT_CREATE_TABLE:
+    case STATEMENT_CREATE_INDEX:
+    case STATEMENT_CREATE_DATABASE:
+      operation = "CREATE";
+      break;
+      
+    case STATEMENT_USE_TABLE:
+    case STATEMENT_USE_DATABASE:
+    case STATEMENT_SHOW_TABLES:
+    case STATEMENT_SHOW_INDEXES:
+      operation = "SHOW";
+      break;
+      
+    default:
+      // For any other statements
+      requires_permission = false;
+      break;
+  }
+  
+  if (requires_permission && !db_check_permission(db, operation)) {
+    printf("Error: Permission denied for this operation.\n");
+    printf("You don't have sufficient privileges. Please ask an admin for assistance.\n");
+    return EXECUTE_PERMISSION_DENIED;
+  }
+
+  // Execute the statement based on type
   switch (statement->type)
   {
   case STATEMENT_INSERT:
@@ -1687,6 +1911,12 @@ PrepareResult prepare_database_statement(Input_Buffer *buf,
 
     return PREPARE_SUCCESS;
   }
+  else if (strncasecmp(buf->buffer, "using database", 14) == 0)
+  {
+    // Helpful error message for common mistake
+    printf("Did you mean 'USE DATABASE'? The correct syntax is 'USE DATABASE <name>'.\n");
+    return PREPARE_SYNTAX_ERROR;
+  }
 
   return PREPARE_UNRECOGNIZED_STATEMENT;
 }
@@ -1697,40 +1927,74 @@ ExecuteResult execute_database_statement(Statement *statement,
   switch (statement->type)
   {
   case STATEMENT_CREATE_DATABASE:
-    // Close current database if open
-    if (*db_ptr)
     {
-      db_close_database(*db_ptr);
-      *db_ptr = NULL;
-    }
+      // Create the new database without closing the current one first
+      Database *new_db = db_create_database(statement->database_name);
+      if (!new_db)
+      {
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+      }
 
-    // Create and open the new database
-    *db_ptr = db_create_database(statement->database_name);
-    if (!*db_ptr)
-    {
-      return EXECUTE_UNRECOGNIZED_STATEMENT;
-    }
+      // Transfer authentication state if user is logged in
+      if (*db_ptr && auth_is_logged_in(&(*db_ptr)->user_manager)) {
+        // Get current username from old database
+        const char* username = auth_get_current_username(&(*db_ptr)->user_manager);
+        UserRole role = auth_get_current_role(&(*db_ptr)->user_manager);
+        
+        // Find user in new database and log them in automatically
+        // We don't have the password, but we can set the current user directly
+        for (uint32_t i = 0; i < new_db->user_manager.count; i++) {
+          if (strcmp(new_db->user_manager.users[i].username, username) == 0) {
+            new_db->user_manager.current_user_index = i;
+            break;
+          }
+        }
+      }
 
-    printf("Database created: %s\n", statement->database_name);
-    return EXECUTE_SUCCESS;
+      // Only close the current database after successfully creating the new one
+      if (*db_ptr)
+      {
+        db_close_database(*db_ptr);
+      }
+      *db_ptr = new_db;
+
+      printf("Database created: %s\n", statement->database_name);
+      return EXECUTE_SUCCESS;
+    }
 
   case STATEMENT_USE_DATABASE:
-    // Close current database if open
-    if (*db_ptr)
     {
-      db_close_database(*db_ptr);
-      *db_ptr = NULL;
-    }
+      // Open the new database without closing the current one first
+      Database *new_db = db_open_database(statement->database_name);
+      if (!new_db)
+      {
+        return EXECUTE_UNRECOGNIZED_STATEMENT;
+      }
 
-    // Open the existing database
-    *db_ptr = db_open_database(statement->database_name);
-    if (!*db_ptr)
-    {
-      return EXECUTE_UNRECOGNIZED_STATEMENT;
-    }
+      // Transfer authentication state if user is logged in
+      if (*db_ptr && auth_is_logged_in(&(*db_ptr)->user_manager)) {
+        // Get current username from old database
+        const char* username = auth_get_current_username(&(*db_ptr)->user_manager);
+        
+        // Find user in new database and log them in automatically
+        for (uint32_t i = 0; i < new_db->user_manager.count; i++) {
+          if (strcmp(new_db->user_manager.users[i].username, username) == 0) {
+            new_db->user_manager.current_user_index = i;
+            break;
+          }
+        }
+      }
 
-    printf("Using database: %s\n", statement->database_name);
-    return EXECUTE_SUCCESS;
+      // Only close the current database after successfully opening the new one
+      if (*db_ptr)
+      {
+        db_close_database(*db_ptr);
+      }
+      *db_ptr = new_db;
+
+      printf("Using database: %s\n", statement->database_name);
+      return EXECUTE_SUCCESS;
+    }
 
   default:
     return EXECUTE_UNRECOGNIZED_STATEMENT;
@@ -1933,6 +2197,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
   }
 
   int row_count = 0;
+  bool rows_found = false;
   bool show_query_plan = true; // Set to true to enable query plan logging
 
   // Special case: if filtering by ID, use the more efficient btree search
@@ -1959,7 +2224,8 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
       {
         start_json_result();
         printf("    ");
-        format_row_as_json(&row, table_def, NULL, 0); // Show all columns
+        format_row_as_json(&row, table_def, statement->columns_to_select,
+                           statement->num_columns_to_select);
         end_json_result(1);
       }
       else
@@ -1987,9 +2253,9 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
 
         // Print separator line
         for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                      ? statement->num_columns_to_select
-                                      : table_def->num_columns);
-             i++)
+                                  ? statement->num_columns_to_select
+                                  : table_def->num_columns);
+         i++)
         {
           printf("|-%s-", "----------");
         }
@@ -2008,7 +2274,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
             for (uint32_t j = 0; j < table_def->num_columns; j++)
             {
               if (strcasecmp(table_def->columns[j].name,
-                             statement->columns_to_select[i]) == 0)
+                           statement->columns_to_select[i]) == 0)
               {
                 column_idx = j;
                 break;
@@ -2036,435 +2302,138 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
           }
         }
         printf("\n");
+        rows_found = true;
       }
 
-      row_count++;
       dynamic_row_free(&row);
     }
-    else
-    {
-      // No results found
-      if (statement->db->output_format == OUTPUT_FORMAT_JSON)
-      {
-        start_json_result();
-        end_json_result(0);
-      }
-      else
-      {
-        printf("Record not found.\n");
-      }
-    }
-
     free(cursor);
   }
   else
   {
-    // Check if we can use a secondary index for this query
-    int index_idx = catalog_find_index_by_column(&statement->db->catalog,
-                                                 statement->table_name,
-                                                 statement->where_column);
+    // For other columns, do a full table scan
+    Cursor *cursor = table_start(table);
+    DynamicRow row;
+    dynamic_row_init(&row, table_def);
 
-    if (index_idx != -1)
+    // Choose output format
+    if (statement->db->output_format == OUTPUT_FORMAT_JSON)
     {
-      // Use the index to find matching rows
-      TableDef *table_def = catalog_get_active_table(&statement->db->catalog);
-      IndexDef *index_def = &table_def->indexes[index_idx];
+      start_json_result();
+      bool first_match = true;
 
-      // Log query execution plan
-      if (show_query_plan)
+      while (!(cursor->end_of_table))
       {
-        printf("QUERY PLAN: Using secondary index '%s' on column '%s'\n",
-               index_def->name, statement->where_column);
-      }
+        void *value = cursor_value(cursor);
+        deserialize_dynamic_row(value, table_def, &row);
 
-      // Open the index file
-      Table *index_table = db_open(index_def->filename);
-      if (!index_table)
-      {
-        printf("Error: Failed to open index '%s'.\n", index_def->name);
-        free_columns_to_select(statement);
-        return EXECUTE_UNRECOGNIZED_STATEMENT;
-      }
+        // Check if row matches condition
+        bool row_matches = false;
 
-      // Set the root page number from catalog
-      index_table->root_page_num = index_def->root_page_num;
-
-      // Get the key value and hash it
-      void *key_data = NULL;
-      uint32_t key_size = 0;
-
-      // Convert the where value to the appropriate data type
-      ColumnType column_type = table_def->columns[where_column_idx].type;
-
-      static int32_t int_value;
-      static float float_value;
-
-      switch (column_type)
-      {
-      case COLUMN_TYPE_INT:
-        int_value = atoi(statement->where_value);
-        key_data = &int_value;
-        key_size = sizeof(int32_t);
-        break;
-
-      case COLUMN_TYPE_STRING:
-        key_data = statement->where_value;
-        key_size = strlen(statement->where_value);
-        break;
-
-      case COLUMN_TYPE_FLOAT:
-        float_value = atof(statement->where_value);
-        key_data = &float_value;
-        key_size = sizeof(float);
-        break;
-
-        // Add other cases as needed
-
-      default:
-        key_data = NULL;
-        break;
-      }
-
-      if (key_data)
-      {
-        // Hash the key to get the numeric index key
-        uint32_t hash_key = hash_key_for_value(key_data, key_size);
-
-        // Use the index to find matching rows
-        Cursor *index_cursor = secondary_index_find(index_table, hash_key);
-
-        if (!index_cursor->end_of_table)
+        switch (table_def->columns[where_column_idx].type)
         {
-          if (statement->db->output_format == OUTPUT_FORMAT_JSON)
+          case COLUMN_TYPE_INT:
           {
-            // Format output as JSON
-            start_json_result();
-            bool first_match = true;
+            int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
+            int where_value = atoi(statement->where_value);
+            row_matches = (col_value == where_value);
+            break;
+          }
+          case COLUMN_TYPE_STRING:
+          {
+            char *col_value = dynamic_row_get_string(&row, table_def, where_column_idx);
+            row_matches = (strcasecmp(col_value, statement->where_value) == 0);
+            break;
+          }
+          case COLUMN_TYPE_FLOAT:
+          {
+            float col_value = dynamic_row_get_float(&row, table_def, where_column_idx);
+            float where_value = atof(statement->where_value);
+            row_matches = (fabs(col_value - where_value) < 0.0001);
+            break;
+          }
+          case COLUMN_TYPE_BOOLEAN:
+          {
+            bool col_value = dynamic_row_get_boolean(&row, table_def, where_column_idx);
+            bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
+                            strcmp(statement->where_value, "1") == 0);
+            row_matches = (col_value == where_value);
+            break;
+          }
+          default:
+            row_matches = false;
+            break;
+        }
 
-            // Process index entries
-            while (!index_cursor->end_of_table)
-            {
-              void *node = get_page(index_table->pager, index_cursor->page_num);
-              void *value = leaf_node_value(node, index_cursor->cell_num);
+        if (row_matches)
+        {
+          rows_found = true;
+          row_count++;
 
-              // Cast to our secondary index entry structure
-              SecondaryIndexEntry *entry = (SecondaryIndexEntry *)value;
-
-              // ADD THIS: Check if the actual value matches the search value
-              bool value_matches = false;
-              if (entry->key_size == key_size)
-              {
-                // Compare the actual key data
-                if (memcmp(entry->key_data, key_data, key_size) == 0)
-                {
-                  value_matches = true;
-                }
-              }
-
-              // Only process if the value actually matches
-              if (value_matches)
-              {
-                // Look up the actual row using the primary key
-                Cursor *row_cursor = table_find(table, entry->row_id);
-
-                if (!row_cursor->end_of_table)
-                {
-                  DynamicRow row;
-                  dynamic_row_init(&row, table_def);
-
-                  deserialize_dynamic_row(cursor_value(row_cursor), table_def, &row);
-
-                  if (!first_match)
-                  {
-                    printf(",\n    ");
-                  }
-                  else
-                  {
-                    printf("    ");
-                    first_match = false;
-                  }
-
-                  format_row_as_json(&row, table_def, statement->columns_to_select,
-                                     statement->num_columns_to_select);
-
-                  row_count++;
-                  dynamic_row_free(&row);
-                }
-
-                free(row_cursor);
-              }
-
-              cursor_advance(index_cursor);
-            }
-
-            end_json_result(row_count);
+          if (!first_match)
+          {
+            printf(",\n    ");
           }
           else
           {
-            // Table format output
-            // First print the header
-            printf("| ");
-            if (statement->num_columns_to_select > 0)
-            {
-              // Print only selected columns
-              for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
-              {
-                printf("%s | ", statement->columns_to_select[i]);
-              }
-            }
-            else
-            {
-              // Print all column names
-              for (uint32_t i = 0; i < table_def->num_columns; i++)
-              {
-                printf("%s | ", table_def->columns[i].name);
-              }
-            }
-            printf("\n");
-
-            // Print separator line
-            printf("|");
-            for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                          ? statement->num_columns_to_select
-                                          : table_def->num_columns);
-                 i++)
-            {
-              printf("------------|");
-            }
-            printf("\n");
-
-            // Process index entries and print rows
-            while (!index_cursor->end_of_table)
-            {
-              void *node = get_page(index_table->pager, index_cursor->page_num);
-              void *value = leaf_node_value(node, index_cursor->cell_num);
-
-              // Cast to our secondary index entry structure
-              SecondaryIndexEntry *entry = (SecondaryIndexEntry *)value;
-
-              // ADD THIS: Check if the actual value matches the search value
-              bool value_matches = false;
-              if (entry->key_size == key_size)
-              {
-                // Compare the actual key data
-                if (memcmp(entry->key_data, key_data, key_size) == 0)
-                {
-                  value_matches = true;
-                }
-              }
-
-              // Only process if the value actually matches
-              if (value_matches)
-              {
-                // Look up the actual row using the primary key
-                Cursor *row_cursor = table_find(table, entry->row_id);
-
-                if (!row_cursor->end_of_table)
-                {
-                  DynamicRow row;
-                  dynamic_row_init(&row, table_def);
-
-                  deserialize_dynamic_row(cursor_value(row_cursor), table_def, &row);
-
-                  // Print row data
-                  printf("| ");
-                  if (statement->num_columns_to_select > 0)
-                  {
-                    // Print only selected columns
-                    for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
-                    {
-                      // Find column index by name
-                      int column_idx = -1;
-                      for (uint32_t j = 0; j < table_def->num_columns; j++)
-                      {
-                        if (strcasecmp(table_def->columns[j].name, statement->columns_to_select[i]) == 0)
-                        {
-                          column_idx = j;
-                          break;
-                        }
-                      }
-
-                      if (column_idx != -1)
-                      {
-                        print_dynamic_column(&row, table_def, column_idx);
-                      }
-                      else
-                      {
-                        printf("N/A");
-                      }
-                      printf(" | ");
-                    }
-                  }
-                  else
-                  {
-                    // Print all columns
-                    for (uint32_t i = 0; i < table_def->num_columns; i++)
-                    {
-                      print_dynamic_column(&row, table_def, i);
-                      printf(" | ");
-                    }
-                  }
-                  printf("\n");
-
-                  row_count++;
-                  dynamic_row_free(&row);
-                }
-
-                free(row_cursor);
-              }
-
-              cursor_advance(index_cursor);
-            }
-
-            if (row_count == 0)
-            {
-              printf("No matching records found.\n");
-            }
+            printf("    ");
+            first_match = false;
           }
-        }
-        else
-        {
-          // No results found
-          if (statement->db->output_format == OUTPUT_FORMAT_JSON)
-          {
-            start_json_result();
-            end_json_result(0);
-          }
-          else
-          {
-            printf("No matching records found.\n");
-          }
+
+          format_row_as_json(&row, table_def, statement->columns_to_select,
+                         statement->num_columns_to_select);
         }
 
-        free(index_cursor);
-        db_close(index_table);
+        cursor_advance(cursor);
       }
+
+      end_json_result(row_count);
     }
     else
     {
-      // Fall back to full table scan when no index is available
-      bool rows_found = false;
-      Cursor *cursor = table_start(table);
-      DynamicRow row;
-      dynamic_row_init(&row, table_def);
-
-      if (statement->db->output_format == OUTPUT_FORMAT_JSON)
+      // TABLE FORMAT OUTPUT
+      // Print column headers
+      printf("| ");
+      if (statement->num_columns_to_select > 0)
       {
-        start_json_result();
-        bool first_match = true;
-
-        while (!(cursor->end_of_table))
+        // Print only selected columns
+        for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
         {
-          void *value = cursor_value(cursor);
-          deserialize_dynamic_row(value, table_def, &row);
-
-          // Check if this row matches our condition
-          bool row_matches = false;
-
-          switch (table_def->columns[where_column_idx].type)
-          {
-          case COLUMN_TYPE_INT:
-          {
-            int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
-            int where_value = atoi(statement->where_value);
-            row_matches = (col_value == where_value);
-            break;
-          }
-          case COLUMN_TYPE_STRING:
-          {
-            char *col_value = dynamic_row_get_string(&row, table_def, where_column_idx);
-            row_matches = (strcasecmp(col_value, statement->where_value) == 0);
-            break;
-          }
-          case COLUMN_TYPE_FLOAT:
-          {
-            float col_value = dynamic_row_get_float(&row, table_def, where_column_idx);
-            float where_value = atof(statement->where_value);
-            row_matches = (fabs(col_value - where_value) < 0.0001);
-            break;
-          }
-          case COLUMN_TYPE_BOOLEAN:
-          {
-            bool col_value = dynamic_row_get_boolean(&row, table_def, where_column_idx);
-            bool where_value = (strcasecmp(statement->where_value, "true") == 0 ||
-                                strcmp(statement->where_value, "1") == 0);
-            row_matches = (col_value == where_value);
-            break;
-          }
-          default:
-            row_matches = false;
-            break;
-          }
-
-          if (row_matches)
-          {
-            rows_found = true;
-            row_count++;
-
-            if (!first_match)
-            {
-              printf(",\n    ");
-            }
-            else
-            {
-              printf("    ");
-              first_match = false;
-            }
-
-            format_row_as_json(&row, table_def, statement->columns_to_select,
-                               statement->num_columns_to_select);
-          }
-
-          cursor_advance(cursor);
+          printf("%s | ", statement->columns_to_select[i]);
         }
-
-        end_json_result(row_count);
       }
       else
       {
-        // TABLE FORMAT OUTPUT - Add table format code
-        // Print column headers
-        printf("| ");
-        if (statement->num_columns_to_select > 0)
+        // Print all column names
+        for (uint32_t i = 0; i < table_def->num_columns; i++)
         {
-          // Print only selected columns
-          for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
-          {
-            printf("%s | ", statement->columns_to_select[i]);
-          }
+          printf("%s | ", table_def->columns[i].name);
         }
-        else
+      }
+      printf("\n");
+
+      // Print separator line
+      printf("|");
+      for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
+                              ? statement->num_columns_to_select
+                              : table_def->num_columns);
+           i++)
+      {
+        printf("------------|");
+      }
+      printf("\n");
+
+      // Scan the table for matching rows
+      while (!(cursor->end_of_table))
+      {
+        void *value = cursor_value(cursor);
+        deserialize_dynamic_row(value, table_def, &row);
+
+        // Check if row matches condition
+        bool row_matches = false;
+
+        switch (table_def->columns[where_column_idx].type)
         {
-          // Print all column names
-          for (uint32_t i = 0; i < table_def->num_columns; i++)
-          {
-            printf("%s | ", table_def->columns[i].name);
-          }
-        }
-        printf("\n");
-
-        // Print separator line
-        printf("|");
-        for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
-                                      ? statement->num_columns_to_select
-                                      : table_def->num_columns);
-             i++)
-        {
-          printf("------------|");
-        }
-        printf("\n");
-
-        // Scan the table for matching rows
-        while (!(cursor->end_of_table))
-        {
-          void *value = cursor_value(cursor);
-          deserialize_dynamic_row(value, table_def, &row);
-
-          // Check if row matches condition
-          bool row_matches = false;
-
-          switch (table_def->columns[where_column_idx].type)
-          {
           case COLUMN_TYPE_INT:
           {
             int col_value = dynamic_row_get_int(&row, table_def, where_column_idx);
@@ -2496,67 +2465,66 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
           default:
             row_matches = false;
             break;
-          }
+        }     
 
-          if (row_matches)
-          {
-            rows_found = true;
-            row_count++;
-
-            // Print row data
-            printf("| ");
-
-            if (statement->num_columns_to_select > 0)
-            {
-              // Print only selected columns
-              for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
-              {
-                // Find column index by name
-                int column_idx = -1;
-                for (uint32_t j = 0; j < table_def->num_columns; j++)
-                {
-                  if (strcasecmp(table_def->columns[j].name, statement->columns_to_select[i]) == 0)
-                  {
-                    column_idx = j;
-                    break;
-                  }
-                }
-
-                if (column_idx != -1)
-                {
-                  print_dynamic_column(&row, table_def, column_idx);
-                }
-                else
-                {
-                  printf("N/A");
-                }
-                printf(" | ");
-              }
-            }
-            else
-            {
-              // Print all columns
-              for (uint32_t i = 0; i < table_def->num_columns; i++)
-              {
-                print_dynamic_column(&row, table_def, i);
-                printf(" | ");
-              }
-            }
-            printf("\n");
-          }
-
-          cursor_advance(cursor);
-        }
-
-        if (!rows_found)
+        if (row_matches)
         {
-          printf("No matching records found.\n");
+          rows_found = true;
+          row_count++;
+
+          // Print row data
+          printf("| ");
+
+          if (statement->num_columns_to_select > 0)
+          {
+            // Print only selected columns
+            for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
+            {
+              // Find column index by name
+              int column_idx = -1;
+              for (uint32_t j = 0; j < table_def->num_columns; j++)
+              {
+                if (strcasecmp(table_def->columns[j].name, statement->columns_to_select[i]) == 0)
+                {
+                  column_idx = j;
+                  break;
+                }
+              }
+
+              if (column_idx != -1)
+              {
+                print_dynamic_column(&row, table_def, column_idx);
+              }
+              else
+              {
+                printf("N/A");
+              }
+              printf(" | ");
+            }
+          }
+          else
+          {
+            // Print all columns
+            for (uint32_t i = 0; i < table_def->num_columns; i++)
+            {
+              print_dynamic_column(&row, table_def, i);
+              printf(" | ");
+            }
+          }
+          printf("\n");
         }
+
+        cursor_advance(cursor);
       }
 
-      dynamic_row_free(&row);
-      free(cursor);
+      if (!rows_found)
+      {
+        printf("No matching records found.\n");
+      }
     }
+
+    dynamic_row_free(&row);
+    free(cursor);
   }
 
   // Free allocated memory for columns
@@ -2644,4 +2612,228 @@ ExecuteResult execute_show_indexes(Statement *statement, Database *db)
   }
 
   return EXECUTE_SUCCESS;
+}
+
+// Helper to append formatted output to a buffer
+static void append_to_buffer(char *buf, size_t bufsize, const char *fmt, ...) {
+    va_list args;
+    size_t len = strlen(buf);
+    va_start(args, fmt);
+    vsnprintf(buf + len, bufsize - len, fmt, args);
+    va_end(args);
+}
+
+// Process a command string for the server, writing output to response_buf
+// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE DATABASE)
+// input_buf: reusable Input_Buffer for parsing
+// response_buf: output buffer for response (should be zeroed before call)
+// response_bufsize: size of response_buf
+void process_command_for_server(const char *input, int input_size, Database **db_ptr, Input_Buffer *input_buf, char *response_buf, size_t response_bufsize) {
+    Database *db = *db_ptr;
+    // Copy input to input_buf
+    strncpy(input_buf->buffer, input, input_size - 1);
+    input_buf->buffer[input_size] = '\0';
+    input_buf->input_length = input_size;
+    
+    // Trim trailing whitespace
+    char *trimmed_input = input_buf->buffer;
+    size_t len = strlen(trimmed_input);
+    while (len > 0 && (trimmed_input[len-1] == '\n' || trimmed_input[len-1] == '\r' || 
+                     trimmed_input[len-1] == ' ' || trimmed_input[len-1] == '\t')) {
+        trimmed_input[--len] = '\0';
+    }
+    if (len == 0) {
+        return;
+    }
+    if (trimmed_input[0] == '.') {
+        if (!db && strcmp(trimmed_input, ".exit") != 0) {
+            append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+            return;
+        }
+        if (strcmp(trimmed_input, ".exit") != 0 && (!db || !db_is_authenticated(db))) {
+            append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+            return;
+        }
+        switch (do_meta_command(input_buf, db)) {
+            case META_COMMAND_SUCCESS:
+                append_to_buffer(response_buf, response_bufsize, "Meta command executed.\n");
+                return;
+            case META_COMMAND_TXN_BEGIN:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_begin_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction started.\n");
+                }
+                return;
+            case META_COMMAND_TXN_COMMIT:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_commit_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction committed.\n");
+                }
+                return;
+            case META_COMMAND_TXN_ROLLBACK:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_rollback_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction rolled back.\n");
+                }
+                return;
+            case META_COMMAND_TXN_STATUS:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else if (db->active_txn_id == 0) {
+                    append_to_buffer(response_buf, response_bufsize, "No active transaction.\n");
+                } else {
+                    append_to_buffer(response_buf, response_bufsize, "Current transaction: %u\n", db->active_txn_id);
+                    // Optionally, add txn_print_status output
+                }
+                return;
+            case META_COMMAND_UNRECOGNIZED_COMMAND:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized command %s\n", trimmed_input);
+                return;
+        }
+    } else {
+        Statement statement;
+        memset(&statement, 0, sizeof(Statement));
+        if (strncasecmp(trimmed_input, "login", 5) == 0 ||
+            strncasecmp(trimmed_input, "logout", 6) == 0) {
+            if (!db) {
+                db = malloc(sizeof(Database));
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: Failed to allocate memory.\n");
+                    return;
+                }
+                memset(db, 0, sizeof(Database));
+                strcpy(db->name, "temp");
+                auth_init(&db->user_manager);
+                *db_ptr = db;
+            }
+            switch (prepare_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    statement.db = db;
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                    return;
+            }
+            switch (execute_statement(&statement, db)) {
+                case EXECUTE_SUCCESS:
+                    append_to_buffer(response_buf, response_bufsize, "Authentication successful.\n");
+                    break;
+                case EXECUTE_AUTH_FAILED:
+                    append_to_buffer(response_buf, response_bufsize, "Authentication failed.\n");
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Error during authentication.\n");
+                    break;
+            }
+            return;
+        }
+        if (strncasecmp(trimmed_input, "create database", 15) == 0 ||
+            strncasecmp(trimmed_input, "use database", 12) == 0) {
+            if (!db || !db_is_authenticated(db)) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+                return;
+            }
+            switch (prepare_database_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    break;
+                case PREPARE_SYNTAX_ERROR:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                    return;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Unknown error during database operation.\n");
+                    return;
+            }
+            switch (execute_database_statement(&statement, db_ptr)) {
+                case EXECUTE_SUCCESS:
+                    append_to_buffer(response_buf, response_bufsize, "Executed.\n");
+                    return;
+                case EXECUTE_UNRECOGNIZED_STATEMENT:
+                    append_to_buffer(response_buf, response_bufsize, "Error during database operation.\n");
+                    return;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Unknown error during database operation.\n");
+                    return;
+            }
+        }
+        if (strncasecmp(trimmed_input, "create user", 11) == 0) {
+            if (!db) {
+                append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+                return;
+            }
+            if (!db_is_authenticated(db)) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+                return;
+            }
+            if (!db_check_permission(db, "CREATE_USER")) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Permission denied. Only administrators can create users.\nYou don't have sufficient privileges. Please ask an admin for assistance.\n");
+                return;
+            }
+            switch (prepare_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    statement.db = db;
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\nCorrect syntax: CREATE USER username PASSWORD password ROLE role\nRoles: ADMIN, DEVELOPER, USER\n");
+                    return;
+            }
+            ExecuteResult result = execute_statement(&statement, db);
+            if (result == EXECUTE_SUCCESS) {
+                append_to_buffer(response_buf, response_bufsize, "User '%s' created successfully.\n", statement.auth_username);
+            } else if (result == EXECUTE_PERMISSION_DENIED) {
+                // Already handled in execute_statement
+            } else {
+                append_to_buffer(response_buf, response_bufsize, "Error creating user.\n");
+            }
+            return;
+        }
+        if (!db) {
+            append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+            return;
+        }
+        if (!db_is_authenticated(db)) {
+            append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+            return;
+        }
+        switch (prepare_statement(input_buf, &statement)) {
+            case PREPARE_SUCCESS:
+                statement.db = db;
+                break;
+            case PREPARE_NEGATIVE_ID:
+                append_to_buffer(response_buf, response_bufsize, "ID must be positive.\n");
+                return;
+            case PREPARE_STRING_TOO_LONG:
+                append_to_buffer(response_buf, response_bufsize, "String is too long.\n");
+                return;
+            case PREPARE_SYNTAX_ERROR:
+                append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                return;
+            case PREPARE_UNRECOGNIZED_STATEMENT:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized keyword at the start of '%s'.\n", trimmed_input);
+                return;
+        }
+        ExecuteResult result = execute_statement(&statement, db);
+        switch (result) {
+            case EXECUTE_SUCCESS:
+                append_to_buffer(response_buf, response_bufsize, "Executed.\n");
+                break;
+            case EXECUTE_DUPLICATE_KEY:
+                // Already handled in execute_insert
+                break;
+            case EXECUTE_TABLE_FULL:
+                append_to_buffer(response_buf, response_bufsize, "Error: Table full.\n");
+                break;
+            case EXECUTE_PERMISSION_DENIED:
+                // Already handled in execute_statement
+                break;
+            case EXECUTE_UNRECOGNIZED_STATEMENT:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized statement at '%s'.\n", trimmed_input);
+                break;
+        }
+    }
 }

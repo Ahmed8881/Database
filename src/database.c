@@ -1,8 +1,14 @@
 #include "../include/database.h"
+#include "../include/auth.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+
+// Forward declarations
+static bool ensure_directory_exists(const char *path);
+static bool migrate_table_if_needed(const char *old_path, const char *new_path);
+void init_open_indexes(OpenIndexes *indexes);  // Add this forward declaration
 
 // Helper function to create directory if it doesn't exist
 static bool ensure_directory_exists(const char *path)
@@ -56,15 +62,23 @@ static char tables_dir_buffer[512]; // Global buffer to ensure enough space
 
 Database *db_create_database(const char *name)
 {
+    // Check if database already exists
+    char database_dir[512];
+    snprintf(database_dir, sizeof(database_dir), "Database/%s", name);
+    
+    // Check if the database directory already exists
+    struct stat st = {0};
+    if (stat(database_dir, &st) == 0) {
+        printf("Error: Database '%s' already exists.\n", name);
+        return NULL;
+    }
+    
     // Ensure base Database directory exists
     if (!ensure_directory_exists("Database"))
     {
         printf("Error: Failed to create base Database directory\n");
         return NULL;
     }
-
-    char database_dir[512];
-    snprintf(database_dir, sizeof(database_dir), "Database/%s", name);
 
     // Create main database directory
     if (!ensure_directory_exists(database_dir))
@@ -98,6 +112,11 @@ Database *db_create_database(const char *name)
     {
         db_init_transactions(db, 10); // Support up to 10 concurrent transactions
     }
+
+    // Initialize user manager and create default admin user
+    auth_init(&db->user_manager);
+    auth_save_users(&db->user_manager, name);
+
     return db;
 }
 
@@ -169,8 +188,9 @@ Database *db_open_database(const char *name)
             // Try to migrate from old path to new path
             migrate_table_if_needed(table->filename, correct_path);
 
-            // Update path in catalog
+            // Update path in catalog - use strncpy to safely copy the string
             strncpy(table->filename, correct_path, sizeof(table->filename) - 1);
+            table->filename[sizeof(table->filename) - 1] = '\0';
         }
     }
 
@@ -193,6 +213,10 @@ Database *db_open_database(const char *name)
     }
 
     db_init_transactions(db, 10); // Support up to 10 concurrent transactions
+
+    // Load user manager
+    auth_load_users(&db->user_manager, name);
+
     return db;
 }
 
@@ -203,6 +227,14 @@ bool db_create_table(Database *db, const char *name, ColumnDef *columns, uint32_
     if (!ensure_directory_exists(tables_dir_buffer))
     {
         printf("Error: Failed to create Tables directory: %s\n", tables_dir_buffer);
+        return false;
+    }
+
+    // Check if table already exists
+    int table_idx = catalog_find_table(&db->catalog, name);
+    if (table_idx != -1)
+    {
+        printf("Error: Table '%s' already exists in database '%s'.\n", name, db->name);
         return false;
     }
 
@@ -263,7 +295,9 @@ bool db_use_table(Database *db, const char *table_name)
     // Update the path if needed
     if (strcmp(table_def->filename, correct_path) != 0)
     {
-        strncpy(table_def->filename, correct_path, sizeof(table_def->filename) - 1);
+        size_t copy_len = sizeof(table_def->filename) - 1;
+        memcpy(table_def->filename, correct_path, copy_len);
+        table_def->filename[copy_len] = '\0';
     }
 
     // Open new active table
@@ -310,6 +344,9 @@ void db_close_database(Database *db)
 
     // Save catalog before closing
     catalog_save(&db->catalog, db->name);
+
+    // Clean up auth
+    auth_cleanup(&db->user_manager);
 
     free(db);
 }
@@ -504,4 +541,30 @@ bool open_table_indexes(Database *db, int table_idx)
     }
 
     return true;
+}
+
+// Authentication functions
+bool db_login(Database *db, const char *username, const char *password) {
+    return auth_login(&db->user_manager, username, password);
+}
+
+void db_logout(Database *db) {
+    auth_logout(&db->user_manager);
+}
+
+bool db_create_user(Database *db, const char *username, const char *password, UserRole role) {
+    bool success = auth_create_user(&db->user_manager, username, password, role);
+    if (success) {
+        // Save updated user list
+        auth_save_users(&db->user_manager, db->name);
+    }
+    return success;
+}
+
+bool db_is_authenticated(Database *db) {
+    return auth_is_logged_in(&db->user_manager);
+}
+
+bool db_check_permission(Database *db, const char *operation) {
+    return auth_check_permission(&db->user_manager, operation);
 }

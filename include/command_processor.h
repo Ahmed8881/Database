@@ -37,6 +37,8 @@ typedef enum
   EXECUTE_TABLE_NOT_FOUND,
   EXECUTE_TABLE_OPEN_ERROR,
   EXECUTE_INDEX_ERROR,
+  EXECUTE_PERMISSION_DENIED, // Add this missing enum value
+  EXECUTE_AUTH_FAILED,       // Add another useful enum value
   // Any other existing values...
   EXECUTE_UNRECOGNIZED_STATEMENT
 } ExecuteResult;
@@ -54,10 +56,22 @@ typedef enum
   STATEMENT_CREATE_DATABASE,
   STATEMENT_USE_DATABASE,
   STATEMENT_CREATE_INDEX,
-  STATEMENT_DROP_INDEX,
   STATEMENT_SHOW_INDEXES,
+  // Add new statement types for authentication
+  STATEMENT_LOGIN,
+  STATEMENT_LOGOUT,
+  STATEMENT_CREATE_USER
 } StatementType;
 
+typedef enum
+{
+  WHERE_OP_EQUAL,
+  WHERE_OP_GREATER,
+  WHERE_OP_LESS,
+  WHERE_OP_GREATER_EQUAL,
+  WHERE_OP_LESS_EQUAL,
+  WHERE_OP_NOT_EQUAL,
+} WhereOperator;
 typedef struct
 {
   StatementType type;
@@ -90,11 +104,17 @@ typedef struct
   uint32_t num_columns_to_select;
   char where_column[MAX_COLUMN_NAME];
   char where_value[COLUMN_EMAIL_SIZE];
+  WhereOperator where_operator; 
   bool has_where_clause;
 
   // Fields for index operations
   char index_name[MAX_INDEX_NAME];
   bool use_index; // Flag to indicate if an index should be used for queries
+
+  // Authentication fields
+  char auth_username[64];
+  char auth_password[64];
+  UserRole auth_role;
 } Statement;
 
 void free_columns_to_select(Statement *statement);
@@ -133,5 +153,22 @@ PrepareResult prepare_show_indexes(Input_Buffer *buf, Statement *statement);
 ExecuteResult execute_show_indexes(Statement *statement, Database *db);
 // Utility functions
 void print_constants();
+
+// Add new prepare functions for auth commands
+PrepareResult prepare_login(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_logout(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_create_user(Input_Buffer *buf, Statement *statement);
+
+// Add new execute functions for auth commands
+ExecuteResult execute_login(Statement *statement, Database *db);
+ExecuteResult execute_logout(Statement *statement, Database *db);
+ExecuteResult execute_create_user(Statement *statement, Database *db);
+
+// Process a command string for the server, writing output to response_buf
+// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE DATABASE)
+// input_buf: reusable Input_Buffer for parsing
+// response_buf: output buffer for response (should be zeroed before call)
+// response_bufsize: size of response_buf
+void process_command_for_server(const char *input, int input_size, Database **db_ptr, Input_Buffer *input_buf, char *response_buf, size_t response_bufsize);
 
 #endif // COMMAND_PROCESSOR_H
