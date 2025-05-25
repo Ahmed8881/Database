@@ -6,10 +6,13 @@ ifdef DEBUG
 else
 		CFLAGS += -O2
 endif
+
+CFLAGS += -I./vendor
+
 SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
-SOURCES = $(wildcard $(SRC_DIR)/*.c) main.c
+SOURCES = $(wildcard $(SRC_DIR)/*.c) main.c ./vendor/cJSON/cJSON.c
 OBJECTS = $(SOURCES:%.c=$(OBJ_DIR)/%.o)
 EXECUTABLE = $(BIN_DIR)/db-project
 
