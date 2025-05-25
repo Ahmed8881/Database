@@ -1,21 +1,17 @@
 #ifndef CURSOR_H
 #define CURSOR_H
 
-#include <stdbool.h>
+#include "db_types.h" // Include common type definitions
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "table.h"
+#include <stdbool.h>
 
-// Cursor struct
-typedef struct
+struct Cursor
 {
    Table *table;
    uint32_t page_num;
    uint32_t cell_num;
    bool end_of_table;
-} Cursor;
+};
 
 Cursor *table_start(Table *table);
 // remove table_end
