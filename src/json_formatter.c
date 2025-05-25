@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #define _GNU_SOURCE
 #include "../vendor/cJSON/cJSON.h"
 #include "../include/json_formatter.h"
@@ -6,6 +7,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <strings.h>  
+
+#define MAX_BUFFER_SIZE 4096
 
 // Helper function to escape JSON strings
 char* json_escape_string(const char* str) {
@@ -332,6 +335,74 @@ char* json_create_detailed_success(const char* message, int affected_rows) {
     cJSON_Delete(root);
     
     return response;
+}
+
+// Add these new functions after the existing functions
+
+// Format command output as JSON and append to a buffer
+void json_append_response(char *buf, size_t bufsize, const char *status, const char *message) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", status);
+    cJSON_AddStringToObject(root, "message", message);
+    
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+    
+    // Clear existing buffer and copy the JSON string
+    memset(buf, 0, bufsize);
+    strncpy(buf, json_str, bufsize - 1);
+    free(json_str);
+}
+
+// Format success response
+void json_append_success(char *buf, size_t bufsize, const char *fmt, ...) {
+    char message[MAX_BUFFER_SIZE] = {0};
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(message, sizeof(message), fmt, args);
+    va_end(args);
+    
+    json_append_response(buf, bufsize, "success", message);
+}
+
+// Format error response
+void json_append_error(char *buf, size_t bufsize, const char *fmt, ...) {
+    char message[MAX_BUFFER_SIZE] = {0};
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(message, sizeof(message), fmt, args);
+    va_end(args);
+    
+    json_append_response(buf, bufsize, "error", message);
+}
+
+// Format query result as JSON
+void json_append_query_result(char *buf, size_t bufsize, DynamicRow** rows, int row_count, 
+                            TableDef* table_def, char** columns_to_select, uint32_t num_columns_to_select) {
+    // Create results JSON
+    char* results_json = create_json_result_string(rows, row_count, table_def, 
+                                                columns_to_select, num_columns_to_select);
+    
+    // Clear existing buffer and copy the JSON string
+    memset(buf, 0, bufsize);
+    strncpy(buf, results_json, bufsize - 1);
+    free(results_json);
+}
+
+// Format a detailed command result with affected rows
+void json_append_command_result(char *buf, size_t bufsize, const char *message, int affected_rows) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "success");
+    cJSON_AddStringToObject(root, "message", message);
+    cJSON_AddNumberToObject(root, "affected_rows", affected_rows);
+    
+    char *json_str = cJSON_Print(root);
+    cJSON_Delete(root);
+    
+    // Clear existing buffer and copy the JSON string
+    memset(buf, 0, bufsize);
+    strncpy(buf, json_str, bufsize - 1);
+    free(json_str);
 }
 
 // Parse a JSON command
