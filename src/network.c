@@ -13,6 +13,8 @@
 #include <sys/time.h>   // For timeval
 #include <sys/types.h>  // For fd_set
 #include <sys/select.h> // For select>
+#include "../include/command_processor.h"
+#include "../include/input_handling.h"
 
 // Forward declarations
 static void handle_client(void *arg);
@@ -262,6 +264,10 @@ ClientConnection* connection_create(int socket_fd, struct sockaddr_in address) {
     // Set default database
     strcpy(conn->current_database, "");
     
+    // Initialize session state
+    conn->session_db = NULL;
+    conn->session_input_buf = newInputBuffer();
+    
     printf("Client connected: %s:%d\n", 
            inet_ntoa(address.sin_addr), 
            ntohs(address.sin_port));
@@ -286,6 +292,11 @@ void connection_close(ClientConnection *conn) {
     pthread_mutex_unlock(&conn->lock);
     
     pthread_mutex_destroy(&conn->lock);
+    
+    // Free session state
+    if (conn->session_input_buf) free_input_buffer(conn->session_input_buf);
+    if (conn->session_db) db_close_database(conn->session_db);
+    
     free(conn);
 }
 
@@ -354,9 +365,9 @@ static void handle_client(void *arg) {
             connection_send_response(conn, error);
             free((void*)error);
         }
-    free(handler_arg);
     }
     
+    free(handler_arg);
     // Clean up when client disconnects
     pthread_mutex_lock(&server->connections_lock);
         
@@ -455,109 +466,19 @@ void connection_send_response(ClientConnection *conn, const char *response) {
 
 // Process a JSON command from the client
 bool connection_process_command(ClientHandlerArg *handlerArgs, Database *db, TransactionManager *txn_manager) {
-    // Parse the JSON command
     ClientConnection *conn = handlerArgs->connection;
-    cJSON *root = cJSON_Parse(conn->buffer);
-    if (!root) {
-        const char *error_ptr = cJSON_GetErrorPtr();
-        if (error_ptr) {
-            char error_msg[256];
-            snprintf(error_msg, sizeof(error_msg), "JSON parse error: %s", error_ptr);
-            const char *response = json_create_error_response(error_msg);
-            connection_send_response(conn, response);
-            free((void*)response);
-        }
-        return false;
+    // Use per-connection session state
+    if (!conn->session_input_buf) {
+        conn->session_input_buf = newInputBuffer();
     }
-    #ifdef DEBUG
-    printf("DEBUG: Received command: %s\n", conn->buffer);
-    #endif
-
-    //     // Extract command type
-    // cJSON *cmd = cJSON_GetObjectItem(root, "command");
-    // if (!cmd || !cJSON_IsString(cmd)) {
-    //     const char *response = json_create_error_response("Missing or invalid 'command' field");
-    //     connection_send_response(conn, response);
-    //     free((void*)response);
-    //     cJSON_Delete(root);
-    //     return false;
-    // }
-    
-    // const char *command = cmd->valuestring;
-    // bool success = true;
-    
-    // // Handle meta commands separately
-    // if (strcmp(command, "meta") == 0) {
-    //     cJSON_Delete(root);
-    //     // Pass server pointer through conn->server or find another way to access it
-    //     DatabaseServer *server = handlerArgs->server; // This won't work as written
-    //     return json_parse_meta_command(conn->buffer, conn, server);
-    // }
-
-    cJSON_Delete(root);  // We don't need the root anymore as we'll parse directly
-    
-    // Parse the JSON into a Statement structure
-    // Statement statement;
-    // statement.db = db;  // Set the database reference
-    
-    // if (!json_parse_statement(conn->buffer, &statement)) {
-    //     const char *response = json_create_error_response("Failed to parse command");
-    //     connection_send_response(conn, response);
-    //     free((void*)response);
-    //     return false;
-    // }
-    
-    // // Execute the statement
-    // ExecuteResult result = execute_statement(&statement, db);
-    
-    // // Handle the result
-    // char *response = NULL;
-    // switch (result) {
-    //     case EXECUTE_SUCCESS:
-    //         response = json_create_success_response("Command executed successfully");
-    //         break;
-    //     case EXECUTE_DUPLICATE_KEY:
-    //         response = json_create_error_response("Duplicate key error");
-    //         break;
-    //     case EXECUTE_TABLE_FULL:
-    //         response = json_create_error_response("Table is full");
-    //         break;
-    //     case EXECUTE_TABLE_NOT_FOUND:
-    //         response = json_create_error_response("Table not found");
-    //         break;
-    //     case EXECUTE_TABLE_OPEN_ERROR:
-    //         response = json_create_error_response("Error opening table");
-    //         break;
-    //     case EXECUTE_INDEX_ERROR:
-    //         response = json_create_error_response("Index error");
-    //         break;
-    //     default:
-    //         response = json_create_error_response("Unknown error executing command");
-    //         break;
-    // }
-    
-    // Send response
-    char *response = json_create_success_response("Received command");
-    connection_send_response(conn, response);
-    free(response);
-    
-    // // Clean up any allocated memory in the statement
-    // if (statement.columns_to_select) {
-    //     for (uint32_t i = 0; i < statement.num_columns_to_select; i++) {
-    //         free(statement.columns_to_select[i]);
-    //     }
-    //     free(statement.columns_to_select);
-    // }
-    
-    // if (statement.values) {
-    //     for (uint32_t i = 0; i < statement.num_values; i++) {
-    //         free(statement.values[i]);
-    //     }
-    //     free(statement.values);
-    // }
-    
-    // return (result == EXECUTE_SUCCESS);
-
+    // Use a static response buffer for now
+    char response_buf[MAX_BUFFER_SIZE] = {0};
+    // Use the received buffer as the command string
+    process_command_for_server(conn->buffer, conn->buffer_length, &conn->session_db, conn->session_input_buf, response_buf, sizeof(response_buf));
+    // Send the response back to the client
+    connection_send_response(conn, response_buf);
+    free(conn->session_input_buf);
+    conn->session_input_buf = NULL;
     return true;
 }
 

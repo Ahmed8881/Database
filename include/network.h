@@ -36,6 +36,10 @@ typedef struct ClientConnection {
   bool authenticated;
   char username[64];
 
+  // Per-client session state for command processing
+  Database *session_db;
+  Input_Buffer *session_input_buf;
+
   // Synchronization
   pthread_mutex_t lock;
 } ClientConnection;

@@ -164,4 +164,11 @@ ExecuteResult execute_login(Statement *statement, Database *db);
 ExecuteResult execute_logout(Statement *statement, Database *db);
 ExecuteResult execute_create_user(Statement *statement, Database *db);
 
+// Process a command string for the server, writing output to response_buf
+// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE DATABASE)
+// input_buf: reusable Input_Buffer for parsing
+// response_buf: output buffer for response (should be zeroed before call)
+// response_bufsize: size of response_buf
+void process_command_for_server(const char *input, int input_size, Database **db_ptr, Input_Buffer *input_buf, char *response_buf, size_t response_bufsize);
+
 #endif // COMMAND_PROCESSOR_H
