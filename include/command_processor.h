@@ -63,6 +63,15 @@ typedef enum
   STATEMENT_CREATE_USER
 } StatementType;
 
+typedef enum
+{
+  WHERE_OP_EQUAL,
+  WHERE_OP_GREATER,
+  WHERE_OP_LESS,
+  WHERE_OP_GREATER_EQUAL,
+  WHERE_OP_LESS_EQUAL,
+  WHERE_OP_NOT_EQUAL,
+} WhereOperator;
 typedef struct
 {
   StatementType type;
@@ -95,6 +104,7 @@ typedef struct
   uint32_t num_columns_to_select;
   char where_column[MAX_COLUMN_NAME];
   char where_value[COLUMN_EMAIL_SIZE];
+  WhereOperator where_operator; 
   bool has_where_clause;
 
   // Fields for index operations

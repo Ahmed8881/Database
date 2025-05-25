@@ -1,4 +1,5 @@
 #include "../include/network.h"
+#include "../vendor/cJSON/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -320,7 +321,7 @@ static void handle_client(void *arg) {
         pthread_mutex_unlock(&conn->lock);
         
         // Process command (JSON parsing and execution)
-        if (!connection_process_command(conn, server->db, server->txn_manager)) {
+        if (!connection_process_command(handler_arg, server->db, server->txn_manager)) {
             // Error processing command
             const char *error = json_create_error_response("Error processing command");
             connection_send_response(conn, error);
@@ -425,30 +426,148 @@ void connection_send_response(ClientConnection *conn, const char *response) {
 }
 
 // Process a JSON command from the client
-bool connection_process_command(ClientConnection *conn, Database *db, TransactionManager *txn_manager) {
-    // This is where we'll parse the JSON and execute the command
-    // For now, we'll return a placeholder implementation
+bool connection_process_command(ClientHandlerArg *handlerArgs, Database *db, TransactionManager *txn_manager) {
+    // Parse the JSON command
+    ClientConnection *conn = handlerArgs->connection;
+    cJSON *root = cJSON_Parse(conn->buffer);
+    if (!root) {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr) {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "JSON parse error: %s", error_ptr);
+            const char *response = json_create_error_response(error_msg);
+            connection_send_response(conn, response);
+            free((void*)response);
+        }
+        return false;
+    }
+
+        // Extract command type
+    cJSON *cmd = cJSON_GetObjectItem(root, "command");
+    if (!cmd || !cJSON_IsString(cmd)) {
+        const char *response = json_create_error_response("Missing or invalid 'command' field");
+        connection_send_response(conn, response);
+        free((void*)response);
+        cJSON_Delete(root);
+        return false;
+    }
     
-    // TODO: Implement JSON parsing and command execution
-    const char *response = json_create_success_response("Command received");
+    const char *command = cmd->valuestring;
+    bool success = true;
+    
+    // Handle meta commands separately
+    if (strcmp(command, "meta") == 0) {
+        cJSON_Delete(root);
+        // Pass server pointer through conn->server or find another way to access it
+        DatabaseServer *server = handlerArgs->server; // This won't work as written
+        return json_parse_meta_command(conn->buffer, conn, server);
+    }
+
+    cJSON_Delete(root);  // We don't need the root anymore as we'll parse directly
+    
+    // Parse the JSON into a Statement structure
+    Statement statement;
+    statement.db = db;  // Set the database reference
+    
+    if (!json_parse_statement(conn->buffer, &statement)) {
+        const char *response = json_create_error_response("Failed to parse command");
+        connection_send_response(conn, response);
+        free((void*)response);
+        return false;
+    }
+    
+    // Execute the statement
+    ExecuteResult result = execute_statement(&statement, db);
+    
+    // Handle the result
+    char *response = NULL;
+    switch (result) {
+        case EXECUTE_SUCCESS:
+            response = json_create_success_response("Command executed successfully");
+            break;
+        case EXECUTE_DUPLICATE_KEY:
+            response = json_create_error_response("Duplicate key error");
+            break;
+        case EXECUTE_TABLE_FULL:
+            response = json_create_error_response("Table is full");
+            break;
+        case EXECUTE_TABLE_NOT_FOUND:
+            response = json_create_error_response("Table not found");
+            break;
+        case EXECUTE_TABLE_OPEN_ERROR:
+            response = json_create_error_response("Error opening table");
+            break;
+        case EXECUTE_INDEX_ERROR:
+            response = json_create_error_response("Index error");
+            break;
+        default:
+            response = json_create_error_response("Unknown error executing command");
+            break;
+    }
+    
+    // Send response
     connection_send_response(conn, response);
-    free((void*)response);
+    free(response);
     
-    return true;
+    // Clean up any allocated memory in the statement
+    if (statement.columns_to_select) {
+        for (uint32_t i = 0; i < statement.num_columns_to_select; i++) {
+            free(statement.columns_to_select[i]);
+        }
+        free(statement.columns_to_select);
+    }
+    
+    if (statement.values) {
+        for (uint32_t i = 0; i < statement.num_values; i++) {
+            free(statement.values[i]);
+        }
+        free(statement.values);
+    }
+    
+    return (result == EXECUTE_SUCCESS);
 }
 
 // Create a JSON error response
 char* json_create_error_response(const char *message) {
-    // Simple implementation - in a real system, use a proper JSON library
-    char *response = malloc(strlen(message) + 64);
-    sprintf(response, "{\"status\":\"error\",\"message\":\"%s\"}", message);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "error");
+    cJSON_AddStringToObject(root, "message", message);
+    
+    char *response = cJSON_Print(root);
+    cJSON_Delete(root);
+    
     return response;
 }
 
 // Create a JSON success response
 char* json_create_success_response(const char *data) {
-    // Simple implementation - in a real system, use a proper JSON library
-    char *response = malloc(strlen(data) + 64);
-    sprintf(response, "{\"status\":\"success\",\"data\":\"%s\"}", data);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "success");
+    cJSON_AddStringToObject(root, "data", data);
+    
+    char *response = cJSON_Print(root);
+    cJSON_Delete(root);
+    
     return response;
+}
+
+// Parse a JSON command
+bool json_parse_command(const char *json_str, void *output) {
+    cJSON *root = cJSON_Parse(json_str);
+    if (!root) {
+        return false;
+    }
+    
+    // Extract command type
+    cJSON *command_type = cJSON_GetObjectItem(root, "command");
+    if (!command_type || !cJSON_IsString(command_type)) {
+        cJSON_Delete(root);
+        return false;
+    }
+    
+    // Process the command based on its type
+    // TODO: Implement proper command processing
+    
+    cJSON_Delete(root);
+    return true;
 }
