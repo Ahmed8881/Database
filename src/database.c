@@ -188,10 +188,9 @@ Database *db_open_database(const char *name)
             // Try to migrate from old path to new path
             migrate_table_if_needed(table->filename, correct_path);
 
-            // Update path in catalog - use memcpy to avoid truncation warning
-            size_t copy_len = sizeof(table->filename) - 1;
-            memcpy(table->filename, correct_path, copy_len);
-            table->filename[copy_len] = '\0';
+            // Update path in catalog - use strncpy to safely copy the string
+            strncpy(table->filename, correct_path, sizeof(table->filename) - 1);
+            table->filename[sizeof(table->filename) - 1] = '\0';
         }
     }
 
