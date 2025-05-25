@@ -1202,13 +1202,13 @@ ExecuteResult execute_select(Statement *statement, Table *table)
   {
     // Table format (existing implementation)
     // Print column names as header
-    printf("| ");
+    append_to_buffer(statement->response_buf, statement->response_len, "| ");
     if (statement->num_columns_to_select > 0)
     {
       // Print only selected columns
       for (uint32_t i = 0; i < statement->num_columns_to_select; i++)
       {
-        printf("%s | ", statement->columns_to_select[i]);
+        append_to_buffer(statement->response_buf, statement->response_len, "%s | ", statement->columns_to_select[i]);
       }
     }
     else
@@ -1216,10 +1216,10 @@ ExecuteResult execute_select(Statement *statement, Table *table)
       // Print all column names
       for (uint32_t i = 0; i < table_def->num_columns; i++)
       {
-        printf("%s | ", table_def->columns[i].name);
+        append_to_buffer(statement->response_buf, statement->response_len, "%s | ", table_def->columns[i].name);
       }
     }
-    printf("\n");
+    append_to_buffer(statement->response_buf, statement->response_len, "\n");
 
     // Print separator line
     for (uint32_t i = 0; i < (statement->num_columns_to_select > 0
@@ -1227,9 +1227,9 @@ ExecuteResult execute_select(Statement *statement, Table *table)
                                   : table_def->num_columns);
          i++)
     {
-      printf("|-%s-", "----------");
+      append_to_buffer(statement->response_buf, statement->response_len, "|-%s-", "----------");
     }
-    printf("|\n");
+    append_to_buffer(statement->response_buf, statement->response_len, "|\n");
 
     while (!(cursor->end_of_table))
     {
@@ -1237,7 +1237,7 @@ ExecuteResult execute_select(Statement *statement, Table *table)
       deserialize_dynamic_row(value, table_def, &row);
 
       // Print row data
-      printf("| ");
+    append_to_buffer(statement->response_buf, statement->response_len, "| ");
 
       if (statement->num_columns_to_select > 0)
       {
@@ -1258,13 +1258,13 @@ ExecuteResult execute_select(Statement *statement, Table *table)
 
           if (column_idx != -1)
           {
-            print_dynamic_column(&row, table_def, column_idx);
+            print_dynamic_column(&row, table_def, column_idx, statement->response_buf, statement->response_len);
           }
           else
           {
-            printf("N/A");
+            append_to_buffer(statement->response_buf, statement->response_len, "N/A");
           }
-          printf(" | ");
+          append_to_buffer(statement->response_buf, statement->response_len, " | ");
         }
       }
       else
@@ -1272,11 +1272,11 @@ ExecuteResult execute_select(Statement *statement, Table *table)
         // Print all columns
         for (uint32_t i = 0; i < table_def->num_columns; i++)
         {
-          print_dynamic_column(&row, table_def, i);
-          printf(" | ");
+          print_dynamic_column(&row, table_def, i, statement->response_buf, statement->response_len);
+          append_to_buffer(statement->response_buf, statement->response_len, " | ");
         }
       }
-      printf("\n");
+      append_to_buffer(statement->response_buf, statement->response_len, "\n");
 
       row_count++;
       cursor_advance(cursor);
@@ -2283,7 +2283,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
 
             if (column_idx != -1)
             {
-              print_dynamic_column(&row, table_def, column_idx);
+              print_dynamic_column(&row, table_def, column_idx, statement->response_buf, statement->response_len);
             }
             else
             {
@@ -2297,7 +2297,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
           // Print all columns
           for (uint32_t i = 0; i < table_def->num_columns; i++)
           {
-            print_dynamic_column(&row, table_def, i);
+            print_dynamic_column(&row, table_def, i, statement->response_buf, statement->response_len);
             printf(" | ");
           }
         }
@@ -2493,7 +2493,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
 
               if (column_idx != -1)
               {
-                print_dynamic_column(&row, table_def, column_idx);
+                print_dynamic_column(&row, table_def, column_idx, statement->response_buf, statement->response_len);
               }
               else
               {
@@ -2507,7 +2507,7 @@ ExecuteResult execute_filtered_select(Statement *statement, Table *table)
             // Print all columns
             for (uint32_t i = 0; i < table_def->num_columns; i++)
             {
-              print_dynamic_column(&row, table_def, i);
+              print_dynamic_column(&row, table_def, i, statement->response_buf, statement->response_len);
               printf(" | ");
             }
           }

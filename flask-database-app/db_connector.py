@@ -3,21 +3,82 @@ import json
 import os
 import tempfile
 import time
+import socket
 from typing import List, Dict, Any, Optional, Union
 
-class DatabaseConnector:
-    """Interface with the C database application"""
-    
-    def __init__(self, db_path: str):
-        """Initialize connector with path to database"""
-        self.db_path = db_path
-        self.db_binary = os.path.join(db_path, 'bin', 'db-project')
-        self.database_name = "myusers"
-        self.table_name = "users"
+class Connection:
+    """
+    Connection to the database server via socket communication.
+    """
+    def __init__(self, 
+                 host: str = "localhost", 
+                 port: int = 8080,
+                 database: Optional[str] = None,
+                 connect_timeout: int = 30,
+                 username: str = "admin",
+                 password: str = "jhaz",
+                 db_name: str = "school",
+                 table_name: str = "students") -> None:
         
-        # Create the database and table if they don't exist
-        self._setup_database()
+        self.host = host
+        self.port = port
+        self.database = database
+        self.connect_timeout = connect_timeout
+
+        self.username = username
+        self.password = password
+        self.database_name = db_name
+        self.table_name = table_name
+        
+        # Connection state
+        self.socket = None
+        self.connected = False
     
+    def connect(self):
+        """Connect to the database server"""
+        try:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(self.connect_timeout)
+            self.socket.connect((self.host, self.port))
+            self.connected = True
+
+            print(f"Connected to database at {self.host}:{self.port}")
+
+            # Perform login
+            if not self._login():
+                raise ConnectionError("Login failed")
+            print("Login successful")
+
+            # Set up the database and table if they don't exist
+            self._setup_database()
+            
+            return True
+                
+        except socket.error as e:
+            self.connected = False
+            self.socket = None
+            raise ConnectionError(f"Failed to connect to database at {self.host}:{self.port}: {e}")
+
+    def _login(self) -> bool:
+        """Login to the database server"""
+        if not self.connected or not self.socket:
+            raise ConnectionError("Not connected to database")
+        
+        try:
+            # Send login command
+            login_command = f"LOGIN {self.username} {self.password}"
+            self.socket.sendall(login_command.encode('utf-8') + b'\n')
+            
+            # Wait for response
+            response = self._receive_response()
+            if "Authentication successful" in response:
+                return True
+            else:
+                raise ConnectionError("Login failed: " + response)
+        
+        except socket.error as e:
+            raise ConnectionError(f"Error during login: {e}")
+
     def _setup_database(self) -> None:
         """Set up the database and table if they don't exist"""
         # Create database and table in one go to ensure they exist
@@ -26,8 +87,47 @@ class DatabaseConnector:
             f"USE DATABASE {self.database_name}",
             f"CREATE TABLE {self.table_name} (id INT, name STRING(100), email STRING(255))"
         ]
-        self.run_command("\n".join(create_commands))
-    
+        for command in create_commands:
+            try:
+                output = self.run_command(command)
+                if "Executed" not in output and "already exists" not in output:
+                    raise ConnectionError(f"Failed to execute command: {command}\nOutput: {output}")
+            except Exception as e:
+                print(f"Error setting up database/table: {e}")
+
+    def run_command(self, command: str) -> str:
+        """Run a command on the database server and return output"""
+        if not self.connected or not self.socket:
+            raise ConnectionError("Not connected to database")
+        
+        try:
+            # Send the command
+            self.socket.sendall(command.encode('utf-8') + b'\n')
+            
+            # Wait for response
+            response = self._receive_response()
+            return response
+        
+        except socket.error as e:
+            raise ConnectionError(f"Error sending command: {e}")
+        
+    def _receive_response(self) -> str:
+        """Receive response from the database server"""
+        if not self.connected or not self.socket:
+            raise ConnectionError("Not connected to database")
+        
+        response = b""
+        while True:
+            try:
+                part = self.socket.recv(4096)
+                if not part:
+                    break
+                response += part
+            except socket.timeout:
+                break
+        
+        return response.decode('utf-8')
+
     
     def get_tables(self) -> List[str]:
         """Get a list of available tables"""
@@ -49,7 +149,8 @@ class DatabaseConnector:
     
     def get_records(self, table_name: str) -> List[Dict[str, Any]]:
         """Get all records from a table"""
-        output = self.run_command(f"USE TABLE {table_name}\nSELECT * FROM {table_name}")
+        self.run_command(f"USE TABLE {table_name}")
+        output = self.run_command(f"SELECT * FROM {table_name}")
         records = []
         
         # Better parsing of the output
@@ -115,7 +216,8 @@ class DatabaseConnector:
     
     def get_record_by_id(self, table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
         """Get a specific record by ID"""
-        output = self.run_command(f"USE TABLE {table_name}\nSELECT * FROM {table_name} WHERE id = {record_id}")
+        self.run_command(f"USE TABLE {table_name}")
+        output = self.run_command(f"SELECT * FROM {table_name} WHERE id = {record_id}")
         
         # Parse the output to extract the record
         lines = output.strip().split('\n')
@@ -166,17 +268,15 @@ class DatabaseConnector:
                 return False
             
             # Execute commands to update each field
-            commands = []
-            commands.append(f"USE TABLE {table_name}")
+            self.run_command(f"USE TABLE {table_name}")
             
+            output = ""
             if 'name' in record:
-                commands.append(f"UPDATE {table_name} SET name = \"{record['name']}\" WHERE id = {record_id}")
+                output = self.run_command(f"UPDATE {table_name} SET name = \"{record['name']}\" WHERE id = {record_id}")
             
             if 'email' in record:
-                commands.append(f"UPDATE {table_name} SET email = \"{record['email']}\" WHERE id = {record_id}")
+                output = self.run_command(f"UPDATE {table_name} SET email = \"{record['email']}\" WHERE id = {record_id}")
             
-            # Run the commands
-            output = self.run_command("\n".join(commands))
             
             # Check if the command was successful
             return "Executed" in output
@@ -187,7 +287,8 @@ class DatabaseConnector:
     def delete_record(self, table_name: str, record_id: int) -> bool:
         """Delete a record"""
         try:
-            output = self.run_command(f"USE TABLE {table_name}\nDELETE FROM {table_name} WHERE id = {record_id}")
+            self.run_command(f"USE TABLE {table_name}")
+            output = self.run_command(f"DELETE FROM {table_name} WHERE id = {record_id}")
             
             # Check if the command was successful
             return "Executed" in output
@@ -209,62 +310,4 @@ class DatabaseConnector:
         
         return max_id + 1
     
-    def run_command(self, command: str) -> str:
-        """Run a command on the database binary and return output"""
-        try:
-            # Create a temporary script file with the command
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-                # First make sure we're creating and using the database
-                f.write(f"CREATE DATABASE {self.database_name}\n")
-                f.write(f"USE DATABASE {self.database_name}\n")
-                
-                # Then write the actual command
-                f.write(command + "\n.exit\n")
-                temp_file = f.name
-            
-            # Since we're already in WSL, directly use the binary
-            db_binary_path = self.db_binary
-            if os.path.exists('/mnt/c'):
-                # We're in WSL, convert Windows path to WSL path
-                db_binary_path = self._convert_to_wsl_path(self.db_binary)
-            
-            print(f"Running command: {command}")
-            print(f"Using binary: {db_binary_path}")
-            
-            # Make sure the binary is executable
-            if os.path.exists(db_binary_path):
-                os.chmod(db_binary_path, 0o755)
-            
-            # Execute directly (not using wsl command)
-            process = subprocess.Popen(
-                [db_binary_path],
-                stdin=open(temp_file, 'r'),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-            stdout, stderr = process.communicate()
-            
-            # Clean up
-            os.unlink(temp_file)
-            
-            if stderr:
-                print(f"Error executing command: {stderr}")
-            
-            print(f"Command output: {stdout}")
-            return stdout
-        except Exception as e:
-            print(f"Error running command: {e}")
-            return f"Error: {str(e)}"
-
-    def _convert_to_wsl_path(self, windows_path: str) -> str:
-        """Convert a Windows path to a WSL path"""
-        # Remove drive letter and convert backslashes to forward slashes
-        path = windows_path.replace('\\', '/')
-        
-        # If it has a drive letter like C:, convert to /mnt/c
-        if ':' in path:
-            drive, rest = path.split(':', 1)
-            return f"/mnt/{drive.lower()}{rest}"
-        return path
+    

@@ -12,6 +12,7 @@
 #else
 #include <unistd.h>
 #endif
+#include <stdarg.h>
 
 // Function prototype for get_column_offset to prevent implicit declaration error
 uint32_t get_column_offset(TableDef* table_def, uint32_t col_idx);
@@ -824,8 +825,14 @@ void print_dynamic_row(DynamicRow* row, TableDef* table_def) {
     
     printf(")\n");
 }
-
-void print_dynamic_column(DynamicRow* row, TableDef* table_def, uint32_t col_idx) {
+static void append_to_buffer(char *buf, size_t bufsize, const char *fmt, ...) {
+    va_list args;
+    size_t len = strlen(buf);
+    va_start(args, fmt);
+    vsnprintf(buf + len, bufsize - len, fmt, args);
+    va_end(args);
+}
+void print_dynamic_column(DynamicRow* row, TableDef* table_def, uint32_t col_idx, char *buf, size_t buf_size) {
     if (col_idx >= table_def->num_columns) {
         printf("ERROR");
         return;
@@ -835,25 +842,25 @@ void print_dynamic_column(DynamicRow* row, TableDef* table_def, uint32_t col_idx
     
     switch (col->type) {
         case COLUMN_TYPE_INT:
-            printf("%d", dynamic_row_get_int(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%d", dynamic_row_get_int(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_STRING:
-            printf("%s", dynamic_row_get_string(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%s", dynamic_row_get_string(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_FLOAT:
-            printf("%.2f", dynamic_row_get_float(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%.2f", dynamic_row_get_float(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_BOOLEAN:
-            printf("%s", dynamic_row_get_boolean(row, table_def, col_idx) ? "true" : "false");
+            append_to_buffer(buf, buf_size, "%s", dynamic_row_get_boolean(row, table_def, col_idx) ? "true" : "false");
             break;
         case COLUMN_TYPE_DATE:
-            printf("%d", dynamic_row_get_date(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%d", dynamic_row_get_date(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_TIME:
-            printf("%d", dynamic_row_get_time(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%d", dynamic_row_get_time(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_TIMESTAMP:
-            printf("%ld", dynamic_row_get_timestamp(row, table_def, col_idx));
+            append_to_buffer(buf, buf_size, "%ld", dynamic_row_get_timestamp(row, table_def, col_idx));
             break;
         case COLUMN_TYPE_BLOB:
             printf("[BLOB]");

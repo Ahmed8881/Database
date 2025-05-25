@@ -1,15 +1,14 @@
 #ifndef COMMAND_PROCESSOR_H
 #define COMMAND_PROCESSOR_H
 
+#include "catalog.h"
+#include "database.h"
 #include "db_types.h"
 #include "input_handling.h"
 #include "secondary_index.h"
 #include "table.h"
-#include "catalog.h"
-#include "database.h"
 
-typedef enum
-{
+typedef enum {
   META_COMMAND_SUCCESS,
   META_COMMAND_UNRECOGNIZED_COMMAND,
   META_COMMAND_TXN_BEGIN,
@@ -18,8 +17,7 @@ typedef enum
   META_COMMAND_TXN_STATUS
 } MetaCommandResult;
 
-typedef enum
-{
+typedef enum {
   PREPARE_SUCCESS,
   PREPARE_NEGATIVE_ID,
   PREPARE_STRING_TOO_LONG,
@@ -27,8 +25,7 @@ typedef enum
   PREPARE_SYNTAX_ERROR
 } PrepareResult;
 
-typedef enum
-{
+typedef enum {
   EXECUTE_SUCCESS,
   EXECUTE_DUPLICATE_KEY,
   EXECUTE_TABLE_FULL,
@@ -43,8 +40,7 @@ typedef enum
   EXECUTE_UNRECOGNIZED_STATEMENT
 } ExecuteResult;
 
-typedef enum
-{
+typedef enum {
   STATEMENT_INSERT,
   STATEMENT_SELECT,
   STATEMENT_SELECT_BY_ID,
@@ -63,8 +59,7 @@ typedef enum
   STATEMENT_CREATE_USER
 } StatementType;
 
-typedef enum
-{
+typedef enum {
   WHERE_OP_EQUAL,
   WHERE_OP_GREATER,
   WHERE_OP_LESS,
@@ -72,8 +67,7 @@ typedef enum
   WHERE_OP_LESS_EQUAL,
   WHERE_OP_NOT_EQUAL,
 } WhereOperator;
-typedef struct
-{
+typedef struct {
   StatementType type;
   Row row_to_insert;
   uint32_t id_to_select;
@@ -104,7 +98,7 @@ typedef struct
   uint32_t num_columns_to_select;
   char where_column[MAX_COLUMN_NAME];
   char where_value[COLUMN_EMAIL_SIZE];
-  WhereOperator where_operator; 
+  WhereOperator where_operator;
   bool has_where_clause;
 
   // Fields for index operations
@@ -115,6 +109,10 @@ typedef struct
   char auth_username[64];
   char auth_password[64];
   UserRole auth_role;
+
+  // Response buffer
+  char response_buf[4096];
+  int response_len;
 } Statement;
 
 void free_columns_to_select(Statement *statement);
@@ -130,7 +128,8 @@ PrepareResult prepare_use_table(Input_Buffer *buf, Statement *statement);
 PrepareResult prepare_show_tables(Input_Buffer *buf, Statement *statement);
 
 // Database statement functions
-PrepareResult prepare_database_statement(Input_Buffer *buf, Statement *statement);
+PrepareResult prepare_database_statement(Input_Buffer *buf,
+                                         Statement *statement);
 
 // Execute statement functions
 ExecuteResult execute_statement(Statement *statement, Database *db);
@@ -165,10 +164,12 @@ ExecuteResult execute_logout(Statement *statement, Database *db);
 ExecuteResult execute_create_user(Statement *statement, Database *db);
 
 // Process a command string for the server, writing output to response_buf
-// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE DATABASE)
-// input_buf: reusable Input_Buffer for parsing
-// response_buf: output buffer for response (should be zeroed before call)
-// response_bufsize: size of response_buf
-void process_command_for_server(const char *input, int input_size, Database **db_ptr, Input_Buffer *input_buf, char *response_buf, size_t response_bufsize);
+// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE
+// DATABASE) input_buf: reusable Input_Buffer for parsing response_buf: output
+// buffer for response (should be zeroed before call) response_bufsize: size of
+// response_buf
+void process_command_for_server(const char *input, int input_size,
+                                Database **db_ptr, Input_Buffer *input_buf,
+                                char *response_buf, size_t response_bufsize);
 
 #endif // COMMAND_PROCESSOR_H
