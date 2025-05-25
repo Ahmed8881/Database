@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#define INPUT_BUFFER_SIZE 4096
 
 typedef struct {
   char *buffer;

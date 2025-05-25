@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h> // For strcasecmp on Linux
+#include <stdarg.h>
+#include <stdio.h>
 
 void print_constants()
 {
@@ -2610,4 +2612,228 @@ ExecuteResult execute_show_indexes(Statement *statement, Database *db)
   }
 
   return EXECUTE_SUCCESS;
+}
+
+// Helper to append formatted output to a buffer
+static void append_to_buffer(char *buf, size_t bufsize, const char *fmt, ...) {
+    va_list args;
+    size_t len = strlen(buf);
+    va_start(args, fmt);
+    vsnprintf(buf + len, bufsize - len, fmt, args);
+    va_end(args);
+}
+
+// Process a command string for the server, writing output to response_buf
+// db_ptr: pointer to the current Database* (may be updated, e.g. on CREATE/USE DATABASE)
+// input_buf: reusable Input_Buffer for parsing
+// response_buf: output buffer for response (should be zeroed before call)
+// response_bufsize: size of response_buf
+void process_command_for_server(const char *input, int input_size, Database **db_ptr, Input_Buffer *input_buf, char *response_buf, size_t response_bufsize) {
+    Database *db = *db_ptr;
+    // Copy input to input_buf
+    strncpy(input_buf->buffer, input, input_size - 1);
+    input_buf->buffer[input_size] = '\0';
+    input_buf->input_length = input_size;
+    
+    // Trim trailing whitespace
+    char *trimmed_input = input_buf->buffer;
+    size_t len = strlen(trimmed_input);
+    while (len > 0 && (trimmed_input[len-1] == '\n' || trimmed_input[len-1] == '\r' || 
+                     trimmed_input[len-1] == ' ' || trimmed_input[len-1] == '\t')) {
+        trimmed_input[--len] = '\0';
+    }
+    if (len == 0) {
+        return;
+    }
+    if (trimmed_input[0] == '.') {
+        if (!db && strcmp(trimmed_input, ".exit") != 0) {
+            append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+            return;
+        }
+        if (strcmp(trimmed_input, ".exit") != 0 && (!db || !db_is_authenticated(db))) {
+            append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+            return;
+        }
+        switch (do_meta_command(input_buf, db)) {
+            case META_COMMAND_SUCCESS:
+                append_to_buffer(response_buf, response_bufsize, "Meta command executed.\n");
+                return;
+            case META_COMMAND_TXN_BEGIN:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_begin_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction started.\n");
+                }
+                return;
+            case META_COMMAND_TXN_COMMIT:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_commit_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction committed.\n");
+                }
+                return;
+            case META_COMMAND_TXN_ROLLBACK:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else {
+                    db_rollback_transaction(db);
+                    append_to_buffer(response_buf, response_bufsize, "Transaction rolled back.\n");
+                }
+                return;
+            case META_COMMAND_TXN_STATUS:
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\n");
+                } else if (db->active_txn_id == 0) {
+                    append_to_buffer(response_buf, response_bufsize, "No active transaction.\n");
+                } else {
+                    append_to_buffer(response_buf, response_bufsize, "Current transaction: %u\n", db->active_txn_id);
+                    // Optionally, add txn_print_status output
+                }
+                return;
+            case META_COMMAND_UNRECOGNIZED_COMMAND:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized command %s\n", trimmed_input);
+                return;
+        }
+    } else {
+        Statement statement;
+        memset(&statement, 0, sizeof(Statement));
+        if (strncasecmp(trimmed_input, "login", 5) == 0 ||
+            strncasecmp(trimmed_input, "logout", 6) == 0) {
+            if (!db) {
+                db = malloc(sizeof(Database));
+                if (!db) {
+                    append_to_buffer(response_buf, response_bufsize, "Error: Failed to allocate memory.\n");
+                    return;
+                }
+                memset(db, 0, sizeof(Database));
+                strcpy(db->name, "temp");
+                auth_init(&db->user_manager);
+                *db_ptr = db;
+            }
+            switch (prepare_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    statement.db = db;
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                    return;
+            }
+            switch (execute_statement(&statement, db)) {
+                case EXECUTE_SUCCESS:
+                    append_to_buffer(response_buf, response_bufsize, "Authentication successful.\n");
+                    break;
+                case EXECUTE_AUTH_FAILED:
+                    append_to_buffer(response_buf, response_bufsize, "Authentication failed.\n");
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Error during authentication.\n");
+                    break;
+            }
+            return;
+        }
+        if (strncasecmp(trimmed_input, "create database", 15) == 0 ||
+            strncasecmp(trimmed_input, "use database", 12) == 0) {
+            if (!db || !db_is_authenticated(db)) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+                return;
+            }
+            switch (prepare_database_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    break;
+                case PREPARE_SYNTAX_ERROR:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                    return;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Unknown error during database operation.\n");
+                    return;
+            }
+            switch (execute_database_statement(&statement, db_ptr)) {
+                case EXECUTE_SUCCESS:
+                    append_to_buffer(response_buf, response_bufsize, "Executed.\n");
+                    return;
+                case EXECUTE_UNRECOGNIZED_STATEMENT:
+                    append_to_buffer(response_buf, response_bufsize, "Error during database operation.\n");
+                    return;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Unknown error during database operation.\n");
+                    return;
+            }
+        }
+        if (strncasecmp(trimmed_input, "create user", 11) == 0) {
+            if (!db) {
+                append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+                return;
+            }
+            if (!db_is_authenticated(db)) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+                return;
+            }
+            if (!db_check_permission(db, "CREATE_USER")) {
+                append_to_buffer(response_buf, response_bufsize, "Error: Permission denied. Only administrators can create users.\nYou don't have sufficient privileges. Please ask an admin for assistance.\n");
+                return;
+            }
+            switch (prepare_statement(input_buf, &statement)) {
+                case PREPARE_SUCCESS:
+                    statement.db = db;
+                    break;
+                default:
+                    append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\nCorrect syntax: CREATE USER username PASSWORD password ROLE role\nRoles: ADMIN, DEVELOPER, USER\n");
+                    return;
+            }
+            ExecuteResult result = execute_statement(&statement, db);
+            if (result == EXECUTE_SUCCESS) {
+                append_to_buffer(response_buf, response_bufsize, "User '%s' created successfully.\n", statement.auth_username);
+            } else if (result == EXECUTE_PERMISSION_DENIED) {
+                // Already handled in execute_statement
+            } else {
+                append_to_buffer(response_buf, response_bufsize, "Error creating user.\n");
+            }
+            return;
+        }
+        if (!db) {
+            append_to_buffer(response_buf, response_bufsize, "Error: No database is currently open.\nCreate or open a database first with 'CREATE DATABASE name' or 'USE DATABASE name'\n");
+            return;
+        }
+        if (!db_is_authenticated(db)) {
+            append_to_buffer(response_buf, response_bufsize, "Error: Authentication required. Please login first.\nUse 'LOGIN username password' to authenticate.\n");
+            return;
+        }
+        switch (prepare_statement(input_buf, &statement)) {
+            case PREPARE_SUCCESS:
+                statement.db = db;
+                break;
+            case PREPARE_NEGATIVE_ID:
+                append_to_buffer(response_buf, response_bufsize, "ID must be positive.\n");
+                return;
+            case PREPARE_STRING_TOO_LONG:
+                append_to_buffer(response_buf, response_bufsize, "String is too long.\n");
+                return;
+            case PREPARE_SYNTAX_ERROR:
+                append_to_buffer(response_buf, response_bufsize, "Syntax error. Could not parse statement.\n");
+                return;
+            case PREPARE_UNRECOGNIZED_STATEMENT:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized keyword at the start of '%s'.\n", trimmed_input);
+                return;
+        }
+        ExecuteResult result = execute_statement(&statement, db);
+        switch (result) {
+            case EXECUTE_SUCCESS:
+                append_to_buffer(response_buf, response_bufsize, "Executed.\n");
+                break;
+            case EXECUTE_DUPLICATE_KEY:
+                // Already handled in execute_insert
+                break;
+            case EXECUTE_TABLE_FULL:
+                append_to_buffer(response_buf, response_bufsize, "Error: Table full.\n");
+                break;
+            case EXECUTE_PERMISSION_DENIED:
+                // Already handled in execute_statement
+                break;
+            case EXECUTE_UNRECOGNIZED_STATEMENT:
+                append_to_buffer(response_buf, response_bufsize, "Unrecognized statement at '%s'.\n", trimmed_input);
+                break;
+        }
+    }
 }
