@@ -471,12 +471,17 @@ bool connection_process_command(ClientHandlerArg *handlerArgs, Database *db, Tra
     if (!conn->session_input_buf) {
         conn->session_input_buf = newInputBuffer();
     }
+
     // Use a static response buffer for now
     char response_buf[MAX_BUFFER_SIZE] = {0};
+    
     // Use the received buffer as the command string
-    process_command_for_server(conn->buffer, conn->buffer_length, &conn->session_db, conn->session_input_buf, response_buf, sizeof(response_buf));
+    process_command_for_server(conn->buffer, conn->buffer_length, &conn->session_db, 
+                             conn->session_input_buf, response_buf, sizeof(response_buf));
+ 
     // Send the response back to the client
     connection_send_response(conn, response_buf);
+ 
     free(conn->session_input_buf);
     conn->session_input_buf = NULL;
     return true;
