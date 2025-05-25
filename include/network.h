@@ -2,8 +2,8 @@
 #define NETWORK_H
 
 #include "database.h"
-#include "json_formatter.h"
 #include "thread_pool.h"
+#include "json_formatter.h"
 #include "transaction.h"
 #include <netinet/in.h>
 #include <pthread.h>
@@ -41,7 +41,7 @@ typedef struct ClientConnection {
 } ClientConnection;
 
 // Server structure
-typedef struct {
+typedef struct DatabaseServer {
   int server_fd;
   uint16_t port;
   bool running;
@@ -74,7 +74,7 @@ void server_stop(DatabaseServer *server);
 // Connection handling
 ClientConnection *connection_create(int socket_fd, struct sockaddr_in address);
 void connection_close(ClientConnection *conn);
-bool connection_process_command(ClientConnection *conn, Database *db,
+bool connection_process_command(ClientHandlerArg *conn, Database *db,
                                 TransactionManager *txn_manager);
 void connection_send_response(ClientConnection *conn, const char *response);
 

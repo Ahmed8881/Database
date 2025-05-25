@@ -2,7 +2,8 @@
     "files.associations": {
         "table.h": "c",
         "secondary_index.h": "c",
-        "input_handling.h": "c"
+        "input_handling.h": "c",
+        "command_processor.h": "c"
     },
     "python.testing.unittestArgs": [
         "-v",
