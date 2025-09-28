@@ -19,6 +19,7 @@
 // Forward declarations
 static void handle_client(void *arg);
 static void* monitor_connections(void *arg);
+static bool json_to_text_command(cJSON *json, char *text_command, size_t max_len);
 
 // Create a new database server
 DatabaseServer* server_create(uint16_t port, Database *db, TransactionManager *txn_manager) {
@@ -323,29 +324,39 @@ static void handle_client(void *arg) {
     
 
     
-    // Send welcome message
-    const char *welcome = json_create_success_response("Connected to Database Server");
-    connection_send_response(conn, welcome);
-    free((void*)welcome);
-    
     while (conn->connected) {
-        // Read client request
-        pthread_mutex_lock(&conn->lock);
-        conn->buffer_length = 0;
-        ssize_t bytes_read = recv(conn->socket_fd, 
-                                 conn->buffer, 
-                                 MAX_BUFFER_SIZE - 1, 
-                                 0);
+        // Read length prefix (4 bytes)
+        uint32_t message_length;
+        ssize_t bytes_read = recv(conn->socket_fd, &message_length, 4, MSG_WAITALL);
         
-        if (bytes_read <= 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // No data available, don't treat as error
-                pthread_mutex_unlock(&conn->lock);
-                // Sleep briefly to avoid CPU spinning
-                usleep(10000);  // 10ms
-                continue;
+        if (bytes_read != 4) {
+            if (bytes_read <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // No data available
+                    usleep(10000);  // 10ms
+                    continue;
+                }
+                // Connection closed or error
+                break;
             }
-            // Actual error
+        }
+        
+        // Convert from network byte order
+        message_length = ntohl(message_length);
+        
+        // Validate message length
+        if (message_length > MAX_BUFFER_SIZE - 1) {
+            const char *error = json_create_error_response("Message too large");
+            connection_send_response(conn, error);
+            free((void*)error);
+            break;
+        }
+        
+        // Read the JSON message data
+        pthread_mutex_lock(&conn->lock);
+        bytes_read = recv(conn->socket_fd, conn->buffer, message_length, MSG_WAITALL);
+        
+        if (bytes_read != (ssize_t)message_length) {
             pthread_mutex_unlock(&conn->lock);
             break;
         }
@@ -358,7 +369,7 @@ static void handle_client(void *arg) {
         conn->last_activity = time(NULL);
         pthread_mutex_unlock(&conn->lock);
         
-        // Process command (JSON parsing and execution)
+        // Process JSON command
         if (!connection_process_command(handler_arg, server->db, server->txn_manager)) {
             // Error processing command
             const char *error = json_create_error_response("Error processing command");
@@ -457,33 +468,91 @@ void connection_send_response(ClientConnection *conn, const char *response) {
     
     pthread_mutex_lock(&conn->lock);
     if (conn->connected) {
-        send(conn->socket_fd, response, strlen(response), 0);
-        // Send a newline for message framing
-        send(conn->socket_fd, "\n", 1, 0);
+        // Send length prefix (4 bytes, network byte order)
+        uint32_t response_len = strlen(response);
+        uint32_t net_len = htonl(response_len);
+        send(conn->socket_fd, &net_len, 4, 0);
+        
+        // Send the actual response
+        send(conn->socket_fd, response, response_len, 0);
     }
     pthread_mutex_unlock(&conn->lock);
 }
 
 // Process a JSON command from the client
 bool connection_process_command(ClientHandlerArg *handlerArgs, Database *db, TransactionManager *txn_manager) {
-    ClientConnection *conn = handlerArgs->connection;
-    // Use per-connection session state
-    if (!conn->session_input_buf) {
-        conn->session_input_buf = newInputBuffer();
-    }
-
-    // Use a static response buffer for now
-    char response_buf[MAX_BUFFER_SIZE] = {0};
+    (void)db; // Mark as used
+    (void)txn_manager; // Mark as used
     
-    // Use the received buffer as the command string
-    process_command_for_server(conn->buffer, conn->buffer_length, &conn->session_db, 
-                             conn->session_input_buf, response_buf, sizeof(response_buf));
- 
-    // Send the response back to the client
-    connection_send_response(conn, response_buf);
- 
-    free(conn->session_input_buf);
-    conn->session_input_buf = NULL;
+    ClientConnection *conn = handlerArgs->connection;
+    
+    // Parse the JSON command
+    cJSON *json = cJSON_Parse(conn->buffer);
+    if (!json) {
+        const char *error = json_create_error_response("Invalid JSON");
+        connection_send_response(conn, error);
+        free((void*)error);
+        return false;
+    }
+    
+    // Extract command type
+    cJSON *command_item = cJSON_GetObjectItem(json, "command");
+    if (!command_item || !cJSON_IsString(command_item)) {
+        const char *error = json_create_error_response("Missing or invalid command field");
+        connection_send_response(conn, error);
+        free((void*)error);
+        cJSON_Delete(json);
+        return false;
+    }
+    
+    const char *command = cJSON_GetStringValue(command_item);
+    char text_command[MAX_BUFFER_SIZE] = {0};
+    
+    // Convert JSON command to text format for processing
+    if (json_to_text_command(json, text_command, sizeof(text_command))) {
+        // Use per-connection session state
+        if (!conn->session_input_buf) {
+            conn->session_input_buf = newInputBuffer();
+        }
+
+        // Use a response buffer
+        char response_buf[MAX_BUFFER_SIZE] = {0};
+        
+        // Process the text command
+        process_command_for_server(text_command, strlen(text_command), &conn->session_db, 
+                                 conn->session_input_buf, response_buf, sizeof(response_buf));
+        
+        // Convert response back to JSON and send
+        cJSON *response_json = cJSON_CreateObject();
+        if (strlen(response_buf) > 0) {
+            // Clean up the response text by removing trailing newlines and control chars
+            char *clean_response = response_buf;
+            size_t len = strlen(clean_response);
+            while (len > 0 && (clean_response[len-1] == '\n' || clean_response[len-1] == '\r' || 
+                             clean_response[len-1] == '\t')) {
+                clean_response[--len] = '\0';
+            }
+            
+            cJSON_AddBoolToObject(response_json, "success", true);
+            cJSON_AddStringToObject(response_json, "message", clean_response);
+        } else {
+            cJSON_AddBoolToObject(response_json, "success", true);
+            cJSON_AddStringToObject(response_json, "message", "Command executed");
+        }
+        
+        char *json_string = cJSON_Print(response_json);
+        connection_send_response(conn, json_string);
+        free(json_string);
+        cJSON_Delete(response_json);
+    } else {
+        const char *error = json_create_error_response("Unsupported command");
+        connection_send_response(conn, error);
+        free((void*)error);
+        cJSON_Delete(json);
+        return false;
+    }
+    
+    cJSON_Delete(json);
     return true;
 }
 
@@ -507,4 +576,199 @@ bool json_parse_command(const char *json_str, void *output) {
     
     cJSON_Delete(root);
     return true;
+}
+
+// Convert JSON command to text format for processing by the existing CLI handler
+bool json_to_text_command(cJSON *json, char *text_command, size_t max_len) {
+    cJSON *command_item = cJSON_GetObjectItem(json, "command");
+    if (!command_item || !cJSON_IsString(command_item)) {
+        return false;
+    }
+    
+    const char *command = cJSON_GetStringValue(command_item);
+    
+    if (strcmp(command, "select") == 0) {
+        // Handle SELECT command
+        cJSON *table_item = cJSON_GetObjectItem(json, "table");
+        cJSON *columns_item = cJSON_GetObjectItem(json, "columns");
+        cJSON *where_item = cJSON_GetObjectItem(json, "where");
+        
+        if (!table_item || !cJSON_IsString(table_item)) {
+            return false;
+        }
+        
+        // Start building SELECT statement
+        snprintf(text_command, max_len, "SELECT ");
+        
+        if (columns_item && cJSON_IsArray(columns_item)) {
+            int array_size = cJSON_GetArraySize(columns_item);
+            for (int i = 0; i < array_size; i++) {
+                cJSON *col = cJSON_GetArrayItem(columns_item, i);
+                if (cJSON_IsString(col)) {
+                    const char *col_name = cJSON_GetStringValue(col);
+                    if (i > 0) {
+                        strncat(text_command, ", ", max_len - strlen(text_command) - 1);
+                    }
+                    strncat(text_command, col_name, max_len - strlen(text_command) - 1);
+                }
+            }
+        } else {
+            strncat(text_command, "*", max_len - strlen(text_command) - 1);
+        }
+        
+        strncat(text_command, " FROM ", max_len - strlen(text_command) - 1);
+        strncat(text_command, cJSON_GetStringValue(table_item), max_len - strlen(text_command) - 1);
+        
+        if (where_item && cJSON_IsObject(where_item)) {
+            cJSON *column = cJSON_GetObjectItem(where_item, "column");
+            cJSON *operator = cJSON_GetObjectItem(where_item, "operator");
+            cJSON *value = cJSON_GetObjectItem(where_item, "value");
+            
+            if (column && operator && value && 
+                cJSON_IsString(column) && cJSON_IsString(operator)) {
+                
+                strncat(text_command, " WHERE ", max_len - strlen(text_command) - 1);
+                strncat(text_command, cJSON_GetStringValue(column), max_len - strlen(text_command) - 1);
+                strncat(text_command, " ", max_len - strlen(text_command) - 1);
+                strncat(text_command, cJSON_GetStringValue(operator), max_len - strlen(text_command) - 1);
+                strncat(text_command, " ", max_len - strlen(text_command) - 1);
+                
+                if (cJSON_IsString(value)) {
+                    strncat(text_command, "\"", max_len - strlen(text_command) - 1);
+                    strncat(text_command, cJSON_GetStringValue(value), max_len - strlen(text_command) - 1);
+                    strncat(text_command, "\"", max_len - strlen(text_command) - 1);
+                } else if (cJSON_IsNumber(value)) {
+                    char num_str[32];
+                    snprintf(num_str, sizeof(num_str), "%g", cJSON_GetNumberValue(value));
+                    strncat(text_command, num_str, max_len - strlen(text_command) - 1);
+                }
+            }
+        }
+        
+        return true;
+    }
+    else if (strcmp(command, "insert") == 0) {
+        // Handle INSERT command
+        cJSON *table_item = cJSON_GetObjectItem(json, "table");
+        cJSON *values_item = cJSON_GetObjectItem(json, "values");
+        
+        if (!table_item || !cJSON_IsString(table_item) || 
+            !values_item || !cJSON_IsArray(values_item)) {
+            return false;
+        }
+        
+        snprintf(text_command, max_len, "INSERT INTO %s VALUES (", 
+                cJSON_GetStringValue(table_item));
+        
+        int array_size = cJSON_GetArraySize(values_item);
+        for (int i = 0; i < array_size; i++) {
+            cJSON *value = cJSON_GetArrayItem(values_item, i);
+            if (i > 0) {
+                strncat(text_command, ", ", max_len - strlen(text_command) - 1);
+            }
+            
+            if (cJSON_IsString(value)) {
+                strncat(text_command, "\"", max_len - strlen(text_command) - 1);
+                strncat(text_command, cJSON_GetStringValue(value), max_len - strlen(text_command) - 1);
+                strncat(text_command, "\"", max_len - strlen(text_command) - 1);
+            } else if (cJSON_IsNumber(value)) {
+                char num_str[32];
+                snprintf(num_str, sizeof(num_str), "%g", cJSON_GetNumberValue(value));
+                strncat(text_command, num_str, max_len - strlen(text_command) - 1);
+            }
+        }
+        strncat(text_command, ")", max_len - strlen(text_command) - 1);
+        
+        return true;
+    }
+    else if (strcmp(command, "begin") == 0) {
+        snprintf(text_command, max_len, ".txn begin");
+        return true;
+    }
+    else if (strcmp(command, "commit") == 0) {
+        snprintf(text_command, max_len, ".txn commit");
+        return true;
+    }
+    else if (strcmp(command, "rollback") == 0) {
+        snprintf(text_command, max_len, ".txn rollback");
+        return true;
+    }
+    else if (strcmp(command, "create_database") == 0) {
+        cJSON *database_item = cJSON_GetObjectItem(json, "database");
+        if (!database_item || !cJSON_IsString(database_item)) {
+            return false;
+        }
+        snprintf(text_command, max_len, "CREATE DATABASE %s", 
+                cJSON_GetStringValue(database_item));
+        return true;
+    }
+    else if (strcmp(command, "use_database") == 0) {
+        cJSON *database_item = cJSON_GetObjectItem(json, "database");
+        if (!database_item || !cJSON_IsString(database_item)) {
+            return false;
+        }
+        snprintf(text_command, max_len, "USE DATABASE %s", 
+                cJSON_GetStringValue(database_item));
+        return true;
+    }
+    else if (strcmp(command, "create_table") == 0) {
+        cJSON *table_item = cJSON_GetObjectItem(json, "table");
+        cJSON *columns_item = cJSON_GetObjectItem(json, "columns");
+        
+        if (!table_item || !cJSON_IsString(table_item) || 
+            !columns_item || !cJSON_IsArray(columns_item)) {
+            return false;
+        }
+        
+        snprintf(text_command, max_len, "CREATE TABLE %s (", 
+                cJSON_GetStringValue(table_item));
+        
+        int array_size = cJSON_GetArraySize(columns_item);
+        for (int i = 0; i < array_size; i++) {
+            cJSON *col = cJSON_GetArrayItem(columns_item, i);
+            if (!cJSON_IsObject(col)) continue;
+            
+            cJSON *name = cJSON_GetObjectItem(col, "name");
+            cJSON *type = cJSON_GetObjectItem(col, "type");
+            cJSON *size = cJSON_GetObjectItem(col, "size");
+            
+            if (!name || !cJSON_IsString(name) || !type || !cJSON_IsString(type)) {
+                continue;
+            }
+            
+            if (i > 0) {
+                strncat(text_command, ", ", max_len - strlen(text_command) - 1);
+            }
+            
+            strncat(text_command, cJSON_GetStringValue(name), max_len - strlen(text_command) - 1);
+            strncat(text_command, " ", max_len - strlen(text_command) - 1);
+            strncat(text_command, cJSON_GetStringValue(type), max_len - strlen(text_command) - 1);
+            
+            if (size && cJSON_IsNumber(size)) {
+                char size_str[32];
+                snprintf(size_str, sizeof(size_str), "(%g)", cJSON_GetNumberValue(size));
+                strncat(text_command, size_str, max_len - strlen(text_command) - 1);
+            }
+        }
+        strncat(text_command, ")", max_len - strlen(text_command) - 1);
+        
+        return true;
+    }
+    else if (strcmp(command, "login") == 0) {
+        // Handle LOGIN command
+        cJSON *username_item = cJSON_GetObjectItem(json, "username");
+        cJSON *password_item = cJSON_GetObjectItem(json, "password");
+        
+        if (!username_item || !cJSON_IsString(username_item) ||
+            !password_item || !cJSON_IsString(password_item)) {
+            return false;
+        }
+        
+        snprintf(text_command, max_len, "LOGIN %s %s", 
+                cJSON_GetStringValue(username_item),
+                cJSON_GetStringValue(password_item));
+        return true;
+    }
+    
+    return false;
 }

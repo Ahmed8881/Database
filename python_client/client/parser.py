@@ -48,6 +48,14 @@ class SQLParser:
             return self._parse_show_tables(query)
         elif first_word == 'show' and 'indexes' in query.lower():
             return self._parse_show_indexes(query)
+        elif first_word == 'begin':
+            return self._parse_begin(query)
+        elif first_word == 'commit':
+            return self._parse_commit(query)
+        elif first_word == 'rollback':
+            return self._parse_rollback(query)
+        elif first_word == 'login':
+            return self._parse_login(query)
         else:
             raise ValueError(f"Unsupported SQL command: {query}")
     
@@ -482,5 +490,60 @@ class SQLParser:
         return {
             "command": "show_indexes",
             "table": table_name,
+            "transaction_id": self.transaction_id
+        }
+    
+    def _parse_begin(self, query: str) -> Dict[str, Any]:
+        """
+        Parse BEGIN statements.
+        Example: BEGIN
+        """
+        if not re.match(r'BEGIN', query, re.IGNORECASE):
+            raise ValueError("Invalid BEGIN syntax")
+        
+        return {
+            "command": "begin",
+            "transaction_id": self.transaction_id
+        }
+    
+    def _parse_commit(self, query: str) -> Dict[str, Any]:
+        """
+        Parse COMMIT statements.
+        Example: COMMIT
+        """
+        if not re.match(r'COMMIT', query, re.IGNORECASE):
+            raise ValueError("Invalid COMMIT syntax")
+        
+        return {
+            "command": "commit",
+            "transaction_id": self.transaction_id
+        }
+    
+    def _parse_rollback(self, query: str) -> Dict[str, Any]:
+        """
+        Parse ROLLBACK statements.
+        Example: ROLLBACK
+        """
+        if not re.match(r'ROLLBACK', query, re.IGNORECASE):
+            raise ValueError("Invalid ROLLBACK syntax")
+        
+        return {
+            "command": "rollback",
+            "transaction_id": self.transaction_id
+        }
+    
+    def _parse_login(self, query: str) -> Dict[str, Any]:
+        """
+        Parse LOGIN statements.
+        Example: LOGIN username password
+        """
+        parts = query.split()
+        if len(parts) != 3:
+            raise ValueError("Invalid LOGIN syntax - expected: LOGIN username password")
+        
+        return {
+            "command": "login",
+            "username": parts[1],
+            "password": parts[2],
             "transaction_id": self.transaction_id
         }
