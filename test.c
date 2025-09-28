@@ -33,9 +33,9 @@ int main() {
     TransactionManager txn_manager;
     memset(&txn_manager, 0, sizeof(TransactionManager));
     
-    // Create the server on port 8080
-    printf("Creating database server on port 8080...\n");
-    DatabaseServer *server = server_create(8080, &db, &txn_manager);
+    // Create the server on port 9000 (to match Python client expectations)
+    printf("Creating database server on port 9000...\n");
+    DatabaseServer *server = server_create(9000, &db, &txn_manager);
     
     if (!server) {
         printf("Failed to create server!\n");
@@ -56,7 +56,7 @@ int main() {
     }
     
     printf("Server started successfully!\n");
-    printf("Listening on port 8080\n");
+    printf("Listening on port 9000\n");
     printf("Press Ctrl+C to stop the server\n");
     
     // The server is now running in its own threads

@@ -12,7 +12,7 @@
 #include <time.h>
 
 // Configuration constants
-#define DEFAULT_PORT 8080
+#define DEFAULT_PORT 9000
 #define MAX_CONNECTIONS 100
 #define CONNECTION_TIMEOUT_SECONDS 60
 #define MAX_BUFFER_SIZE 4096
