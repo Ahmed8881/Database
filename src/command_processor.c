@@ -12,6 +12,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+// Forward declaration
+static void append_to_buffer(char *buf, size_t bufsize, const char *fmt, ...);
+
 void print_constants()
 {
   printf("ROW_SIZE: %d\n", ROW_SIZE);
